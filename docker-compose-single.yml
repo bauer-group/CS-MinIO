@@ -5,17 +5,9 @@
 #
 # Features:
 #   - Single MinIO server with direct port binding
-#   - Admin console with full management UI (default)
+#   - Admin console with full management UI
 #   - Init container for declarative bucket/user setup
 #   - IPv6 support
-#
-# Console Switching:
-#   By default, the admin console (full management) is active.
-#   To switch to the built-in console (object browser only):
-#     1. Comment out MINIO_BROWSER=off in the environment section
-#     2. Uncomment MINIO_BROWSER_REDIRECT=false
-#     3. Uncomment the console port on minio-server
-#     4. Comment out the entire admin-console service
 #
 # Access:
 #   - S3 API:  http://localhost:${EXPOSED_API_PORT}
@@ -38,11 +30,8 @@ x-minio-common: &minio-common
     - MINIO_ROOT_USER=${MINIO_ROOT_USER:-minioadmin}
     - MINIO_ROOT_PASSWORD=${MINIO_ROOT_PASSWORD:-minioadmin}
     - MINIO_REGION_NAME=${MINIO_REGION:-eu-central-1}
-    # ── Console Mode ──────────────────────────────────────────────────
-    # Admin console (default): disable built-in console
+    # Disable built-in browser (admin console provides full management UI)
     - MINIO_BROWSER=off
-    # Built-in console (object browser only): uncomment below, comment out MINIO_BROWSER=off
-    # - MINIO_BROWSER_REDIRECT=false
   healthcheck:
     test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
     interval: 30s
@@ -68,13 +57,9 @@ services:
       - minio-data:/data
     ports:
       - "${EXPOSED_API_PORT:-9000}:9000"
-      # ── Built-in Console (uncomment when switching to built-in mode) ──
-      # - "${EXPOSED_CONSOLE_PORT:-9001}:9001"
 
 
 ### Admin Console ###
-  # Full management UI (default).
-  # To use built-in console instead: comment out this entire service.
 
   admin-console:
     image: ghcr.io/karlspace/minio-ui/minio-admin-console:latest
@@ -123,9 +108,6 @@ services:
       # Pass through environment variables used in config JSON files
       - CONSOLE_USER=${CONSOLE_USER:-console-admin}
       - CONSOLE_PASSWORD=${CONSOLE_PASSWORD:-}
-      # Add additional env vars here that are referenced in your minio-init.json:
-      # - APP_USER=${APP_USER:-}
-      # - APP_PASSWORD=${APP_PASSWORD:-}
     volumes:
       - ${MINIO_INIT_CONFIG:-./config/minio-init.json}:/app/config/init.json:ro
       - minio-credentials:/data/credentials

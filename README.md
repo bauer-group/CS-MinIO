@@ -6,7 +6,7 @@ Production-ready [MinIO](https://min.io/) S3-compatible object storage deploymen
 
 - **S3-Compatible API** - Full Amazon S3 API compatibility via MinIO
 - **Declarative Init Container** - JSON-based provisioning of buckets, policies, groups, users, and service accounts
-- **Admin Console** - Full management UI (default), switchable to built-in object browser
+- **Admin Console** - Full management UI for users, policies, buckets, and monitoring
 - **Multiple Deployment Modes** - Direct port access or Traefik reverse proxy with automatic HTTPS
 - **DNS-Style Bucket Access** - Prepared virtual-host-style routing (e.g., `bucket.s3.example.com`)
 - **CI/CD Automation** - Semantic releases, Docker image builds, base image monitoring, auto-merge
@@ -74,11 +74,7 @@ Production-ready [MinIO](https://min.io/) S3-compatible object storage deploymen
 | **Single** | `docker-compose-single.yml` | Direct port binding, no reverse proxy needed |
 | **Single + Traefik** | `docker-compose-single-traefik.yml` | HTTPS via Traefik with Let's Encrypt certificates |
 
-### Console Switching
-
-By default, both compose files run the **admin console** (full management UI). To switch to the **built-in console** (object browser only), follow the "Console Switching" instructions in each compose file header. The switch is done by commenting/uncommenting a few lines - no override files needed.
-
-> **Note:** MinIO removed its built-in admin UI in [RELEASE.2025-05-24T17-08-30Z](https://github.com/minio/minio/releases/tag/RELEASE.2025-05-24T17-08-30Z). The built-in console is now an object browser only. The admin console provides full management capabilities (users, policies, buckets, monitoring).
+> **Note:** MinIO removed its built-in admin UI in [RELEASE.2025-05-24T17-08-30Z](https://github.com/minio/minio/releases/tag/RELEASE.2025-05-24T17-08-30Z). The admin console provides full management capabilities as a replacement.
 
 ## Configuration
 
@@ -181,7 +177,7 @@ The Traefik deployment mode provides:
 
 - **Automatic HTTPS** via Let's Encrypt certificate resolver
 - **S3 API endpoint** on `${S3_HOSTNAME}` (path-style access)
-- **Console endpoint** on `${S3_CONSOLE_HOSTNAME}` (admin console or object browser)
+- **Console endpoint** on `${S3_CONSOLE_HOSTNAME}` (admin console)
 - **No-buffering middleware** for large S3 uploads
 - **HTTP to HTTPS redirect** on all endpoints
 - **Traefik v2 and v3 compatible**

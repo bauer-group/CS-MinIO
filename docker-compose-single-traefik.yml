@@ -7,24 +7,16 @@
 #   - Traefik reverse proxy running on the ${PROXY_NETWORK} network
 #   - DNS records pointing to this server:
 #     - ${S3_HOSTNAME}         -> S3 API (path-style access)
-#     - ${S3_CONSOLE_HOSTNAME} -> Console (admin console or object browser)
+#     - ${S3_CONSOLE_HOSTNAME} -> Console (admin console)
 #
 # Features:
 #   - HTTPS via Let's Encrypt (automatic certificate management)
 #   - S3 path-style access with no-buffering for large uploads
 #   - Separate endpoints for S3 API and Console
-#   - Admin console with full management UI (default)
+#   - Admin console with full management UI
 #   - Init container for declarative bucket/user setup
 #   - Traefik v2 and v3 compatible
 #   - IPv6 support
-#
-# Console Switching:
-#   By default, the admin console (full management) is active.
-#   To switch to the built-in console (object browser only):
-#     1. Comment out MINIO_BROWSER=off in the environment section
-#     2. Uncomment MINIO_BROWSER_REDIRECT and MINIO_BROWSER_REDIRECT_URL
-#     3. Uncomment the "Built-in Console" router labels on minio-server
-#     4. Comment out the entire admin-console service
 #
 # DNS-Style Bucket Access:
 #   For virtual-host-style access (e.g., bucket.s3.example.com), uncomment
@@ -54,12 +46,8 @@ x-minio-common: &minio-common
     - MINIO_REGION_NAME=${MINIO_REGION:-eu-central-1}
     # Enable virtual-host-style bucket access (bucket.s3.example.com)
     - MINIO_DOMAIN=${S3_HOSTNAME}
-    # ── Console Mode ──────────────────────────────────────────────────
-    # Admin console (default): disable built-in console
+    # Disable built-in browser (admin console provides full management UI)
     - MINIO_BROWSER=off
-    # Built-in console (object browser only): uncomment below, comment out MINIO_BROWSER=off
-    # - MINIO_BROWSER_REDIRECT=true
-    # - MINIO_BROWSER_REDIRECT_URL=https://${S3_CONSOLE_HOSTNAME}
   healthcheck:
     test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
     interval: 30s
@@ -115,20 +103,6 @@ services:
       # ── Service: S3 API ────────────────────────────────────────────────
       - "traefik.http.services.${STACK_NAME:-s3-app}-s3.loadBalancer.server.port=9000"
 
-      # ── Built-in Console (uncomment when switching to built-in mode) ──
-      # Also uncomment MINIO_BROWSER_REDIRECT in the environment section
-      # and comment out the admin-console service below.
-      #
-      # - "traefik.http.routers.${STACK_NAME:-s3-app}-console-http.rule=Host(`${S3_CONSOLE_HOSTNAME}`)"
-      # - "traefik.http.routers.${STACK_NAME:-s3-app}-console-http.entrypoints=web"
-      # - "traefik.http.routers.${STACK_NAME:-s3-app}-console-http.middlewares=${STACK_NAME:-s3-app}-redirect-to-secure"
-      # - "traefik.http.routers.${STACK_NAME:-s3-app}-console.rule=Host(`${S3_CONSOLE_HOSTNAME}`)"
-      # - "traefik.http.routers.${STACK_NAME:-s3-app}-console.entrypoints=web-secure"
-      # - "traefik.http.routers.${STACK_NAME:-s3-app}-console.tls=true"
-      # - "traefik.http.routers.${STACK_NAME:-s3-app}-console.tls.certresolver=letsencrypt"
-      # - "traefik.http.routers.${STACK_NAME:-s3-app}-console.service=${STACK_NAME:-s3-app}-console"
-      # - "traefik.http.services.${STACK_NAME:-s3-app}-console.loadBalancer.server.port=9001"
-
       # ── DNS-Style Bucket Access (virtual-host) ─────────────────────────
       # Uncomment if using wildcard certificates or explicit SANs.
       # Requires: MINIO_DOMAIN=${S3_HOSTNAME} (set above in environment)
@@ -158,8 +132,6 @@ services:
 
 
 ### Admin Console ###
-  # Full management UI (default).
-  # To use built-in console instead: comment out this entire service.
 
   admin-console:
     image: ghcr.io/karlspace/minio-ui/minio-admin-console:latest
@@ -224,9 +196,6 @@ services:
       # Pass through environment variables used in config JSON files
       - CONSOLE_USER=${CONSOLE_USER:-console-admin}
       - CONSOLE_PASSWORD=${CONSOLE_PASSWORD:-}
-      # Add additional env vars here that are referenced in your minio-init.json:
-      # - APP_USER=${APP_USER:-}
-      # - APP_PASSWORD=${APP_PASSWORD:-}
     volumes:
       - ${MINIO_INIT_CONFIG:-./config/minio-init.json}:/app/config/init.json:ro
       - minio-credentials:/data/credentials
