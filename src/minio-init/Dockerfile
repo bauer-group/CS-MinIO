@@ -72,7 +72,8 @@ COPY config/ ./config/
 # ---------------------------------------------------------------------------
 RUN addgroup -g 1000 init \
     && adduser -u 1000 -G init -h /app -D init \
-    && chown -R init:init /app
+    && mkdir -p /data/credentials \
+    && chown -R init:init /app /data
 
 USER init
 

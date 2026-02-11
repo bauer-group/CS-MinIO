@@ -1,7 +1,32 @@
 {
-  "buckets": [],
-  "policies": [],
-  "groups": [],
-  "users": [],
-  "service_accounts": []
+  "policies": [
+    {
+      "name": "pAdministrators",
+      "statements": [
+        {
+          "Effect": "Allow",
+          "Action": ["admin:*"],
+          "Resource": ["arn:aws:s3:::*"]
+        },
+        {
+          "Effect": "Allow",
+          "Action": ["s3:*"],
+          "Resource": ["arn:aws:s3:::*"]
+        }
+      ]
+    }
+  ],
+  "users": [
+    {
+      "access_key": "${CONSOLE_USER}",
+      "secret_key": "${CONSOLE_PASSWORD}",
+      "groups": ["gAdministrators"]
+    }
+  ],
+  "groups": [
+    {
+      "name": "gAdministrators",
+      "policies": ["pAdministrators"]
+    }
+  ]
 }

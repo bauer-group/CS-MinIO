@@ -1,7 +1,9 @@
 """
-IAM Policy Creation Task
+IAM Policy Creation/Update Task
 
-Creates custom IAM policies from JSON policy documents.
+Creates or updates custom IAM policies from JSON policy documents.
+Uses mc admin policy create which is idempotent - it creates if missing
+and overwrites if already present.
 
 JSON config example:
 {
@@ -21,11 +23,12 @@ JSON config example:
 """
 
 import json
+import os
 import subprocess
 import tempfile
 
 TASK_NAME = "Policies"
-TASK_DESCRIPTION = "Create custom IAM policies"
+TASK_DESCRIPTION = "Create or update custom IAM policies"
 CONFIG_KEY = "policies"
 
 MC_ALIAS = "minio"
@@ -33,10 +36,16 @@ MC_ALIAS = "minio"
 
 def _mc(args: list) -> subprocess.CompletedProcess:
     return subprocess.run(
-        ["mc"] + args,
+        ["mc", "--json"] + args,
         capture_output=True,
         text=True,
     )
+
+
+def _policy_exists(name: str) -> bool:
+    """Check if a policy already exists."""
+    result = _mc(["admin", "policy", "info", MC_ALIAS, name])
+    return result.returncode == 0
 
 
 def run(items: list, console) -> dict:
@@ -44,9 +53,11 @@ def run(items: list, console) -> dict:
         return {"skipped": True, "message": "No policies configured"}
 
     created = 0
+    updated = 0
 
     for policy in items:
         name = policy["name"]
+        existed = _policy_exists(name)
 
         # Build IAM policy document
         policy_doc = {
@@ -61,26 +72,24 @@ def run(items: list, console) -> dict:
             json.dump(policy_doc, f, indent=2)
             policy_path = f.name
 
-        # Create policy (idempotent: remove + recreate to update)
-        result = _mc(["admin", "policy", "create", MC_ALIAS, name, policy_path])
-
-        if result.returncode == 0:
-            created += 1
-            console.print(f"    [green]Created policy: {name}[/]")
-        elif "already exists" in result.stderr.lower():
-            # Remove and recreate to ensure latest version
-            _mc(["admin", "policy", "remove", MC_ALIAS, name])
+        try:
+            # mc admin policy create is idempotent (creates or overwrites)
             result = _mc(["admin", "policy", "create", MC_ALIAS, name, policy_path])
+
             if result.returncode == 0:
-                created += 1
-                console.print(f"    [green]Updated policy: {name}[/]")
+                if existed:
+                    updated += 1
+                    console.print(f"    [green]Updated policy: {name}[/]")
+                else:
+                    created += 1
+                    console.print(f"    [green]Created policy: {name}[/]")
             else:
-                console.print(f"    [red]Failed to update policy {name}: {result.stderr.strip()}[/]")
-        else:
-            console.print(f"    [red]Failed to create policy {name}: {result.stderr.strip()}[/]")
+                console.print(f"    [red]Failed to apply policy {name}: {result.stderr.strip()}[/]")
+        finally:
+            os.unlink(policy_path)
 
     total = len(items)
     return {
-        "changed": created > 0,
-        "message": f"{total} policy/policies processed ({created} created/updated)",
+        "changed": created > 0 or updated > 0,
+        "message": f"{total} policy/policies processed ({created} created, {updated} updated)",
     }

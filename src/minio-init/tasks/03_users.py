@@ -1,19 +1,27 @@
 """
 User Creation Task
 
-Creates MinIO users with optional group membership and direct policy attachments.
+Creates MinIO users with optional group membership and direct policy
+attachments. Runs BEFORE the groups task because MinIO groups require
+at least one member to exist - adding a user to a group implicitly
+creates that group.
 
 JSON config example:
 {
   "users": [
     {
       "access_key": "app-service",
-      "secret_key": "${APP_SERVICE_SECRET_KEY}",
+      "secret_key": "${APP_SECRET}",
       "groups": ["app-services"],
       "policies": ["readwrite-documents"]
     }
   ]
 }
+
+Notes:
+  - mc admin user add is idempotent: updates password if user exists.
+  - Adding a user to a non-existent group creates the group implicitly.
+  - The groups task (04_groups.py) then attaches policies to these groups.
 """
 
 import subprocess
@@ -27,7 +35,7 @@ MC_ALIAS = "minio"
 
 def _mc(args: list) -> subprocess.CompletedProcess:
     return subprocess.run(
-        ["mc"] + args,
+        ["mc", "--json"] + args,
         capture_output=True,
         text=True,
     )
@@ -43,7 +51,7 @@ def run(items: list, console) -> dict:
         access_key = user["access_key"]
         secret_key = user["secret_key"]
 
-        # Create user (idempotent: mc admin user add updates password if user exists)
+        # Create user (idempotent: updates password if user exists)
         result = _mc(["admin", "user", "add", MC_ALIAS, access_key, secret_key])
 
         if result.returncode == 0:
@@ -53,7 +61,7 @@ def run(items: list, console) -> dict:
             console.print(f"    [red]Failed to create user {access_key}: {result.stderr.strip()}[/]")
             continue
 
-        # Add to groups
+        # Add to groups (implicitly creates groups if they don't exist)
         for group_name in user.get("groups", []):
             result = _mc(["admin", "group", "add", MC_ALIAS, group_name, access_key])
             if result.returncode == 0:

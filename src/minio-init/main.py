@@ -2,11 +2,16 @@
 """
 MinIO Init - Declarative Object Storage Initialization
 
-Reads a JSON configuration file and applies it to a MinIO server
+Reads JSON configuration files and applies them to a MinIO server
 using the mc (MinIO Client) CLI. Designed to be idempotent - safe
 to run on every container start.
 
-Supports: buckets, policies, groups, users, and service accounts.
+Configuration loading order:
+  1. Built-in default (/app/config/default.json) - always processed
+  2. User config - optional, loaded from:
+     a) MINIO_INIT_CONFIG env var (if set and file exists)
+     b) /app/config/init.json (fallback, if mounted)
+
 JSON values may contain ${ENV_VAR} placeholders for secret injection.
 """
 
@@ -25,6 +30,8 @@ from rich.panel import Panel
 console = Console()
 
 MC_ALIAS = "minio"
+DEFAULT_CONFIG = "/app/config/default.json"
+FALLBACK_USER_CONFIG = "/app/config/init.json"
 
 
 def get_minio_config() -> dict:
@@ -37,15 +44,7 @@ def get_minio_config() -> dict:
 
 
 def wait_for_minio(config: dict, timeout: int = 60) -> bool:
-    """Wait for MinIO server to become available.
-
-    Args:
-        config: MinIO connection configuration.
-        timeout: Maximum seconds to wait.
-
-    Returns:
-        True if MinIO is available, False on timeout.
-    """
+    """Wait for MinIO server to become available."""
     console.print("[dim]Waiting for MinIO server...[/]")
 
     start_time = time.time()
@@ -70,14 +69,7 @@ def wait_for_minio(config: dict, timeout: int = 60) -> bool:
 
 
 def setup_mc_alias(config: dict) -> bool:
-    """Configure mc alias for the MinIO server.
-
-    Args:
-        config: MinIO connection configuration.
-
-    Returns:
-        True if alias was configured successfully.
-    """
+    """Configure mc alias for the MinIO server."""
     result = run_mc([
         "alias", "set", MC_ALIAS,
         config["endpoint"],
@@ -88,15 +80,7 @@ def setup_mc_alias(config: dict) -> bool:
 
 
 def run_mc(args: list, check: bool = False) -> subprocess.CompletedProcess:
-    """Execute an mc command.
-
-    Args:
-        args: Arguments to pass to mc.
-        check: If True, raise on non-zero exit code.
-
-    Returns:
-        CompletedProcess result.
-    """
+    """Execute an mc command."""
     cmd = ["mc", "--json"] + args
     return subprocess.run(
         cmd,
@@ -107,17 +91,7 @@ def run_mc(args: list, check: bool = False) -> subprocess.CompletedProcess:
 
 
 def resolve_env_vars(value: str) -> str:
-    """Replace ${VAR_NAME} patterns with environment variable values.
-
-    Args:
-        value: String potentially containing ${VAR} placeholders.
-
-    Returns:
-        String with placeholders resolved.
-
-    Raises:
-        ValueError: If a referenced environment variable is not set.
-    """
+    """Replace ${VAR_NAME} patterns with environment variable values."""
     def replacer(match):
         var_name = match.group(1)
         env_value = os.environ.get(var_name)
@@ -129,14 +103,7 @@ def resolve_env_vars(value: str) -> str:
 
 
 def resolve_config_values(obj):
-    """Recursively resolve environment variables in config values.
-
-    Args:
-        obj: JSON-parsed object (dict, list, or scalar).
-
-    Returns:
-        Object with all string values resolved.
-    """
+    """Recursively resolve environment variables in config values."""
     if isinstance(obj, str):
         return resolve_env_vars(obj)
     elif isinstance(obj, dict):
@@ -146,20 +113,14 @@ def resolve_config_values(obj):
     return obj
 
 
-def load_config(config_path: str) -> dict:
+def load_config(config_path: str) -> dict | None:
     """Load and resolve a JSON configuration file.
 
-    Args:
-        config_path: Path to the JSON config file.
-
-    Returns:
-        Parsed and resolved configuration dict.
+    Returns None if the file does not exist.
     """
     path = Path(config_path)
     if not path.exists():
-        console.print(f"[yellow]Config file not found: {config_path}[/]")
-        console.print("[dim]Using empty default configuration[/]")
-        return {"buckets": [], "policies": [], "groups": [], "users": [], "service_accounts": []}
+        return None
 
     with open(path) as f:
         raw_config = json.load(f)
@@ -167,12 +128,33 @@ def load_config(config_path: str) -> dict:
     return resolve_config_values(raw_config)
 
 
-def discover_tasks() -> list:
-    """Discover available initialization tasks from the tasks/ directory.
+def discover_configs() -> list[tuple[str, dict]]:
+    """Discover and load configuration files in order.
 
     Returns:
-        Sorted list of task dicts with name, description, and module.
+        List of (label, config_dict) tuples.
     """
+    configs = []
+
+    # 1. Always load built-in default
+    default = load_config(DEFAULT_CONFIG)
+    if default:
+        configs.append(("default", default))
+    else:
+        console.print(f"[yellow]Warning: Built-in default not found: {DEFAULT_CONFIG}[/]")
+
+    # 2. Load user config (env var takes precedence, fallback to standard path)
+    user_config_path = os.environ.get("MINIO_INIT_CONFIG", FALLBACK_USER_CONFIG)
+    if user_config_path != DEFAULT_CONFIG and Path(user_config_path).exists():
+        user_config = load_config(user_config_path)
+        if user_config:
+            configs.append(("user", user_config))
+
+    return configs
+
+
+def discover_tasks() -> list:
+    """Discover available initialization tasks from the tasks/ directory."""
     tasks_dir = Path(__file__).parent / "tasks"
     tasks = []
 
@@ -196,77 +178,22 @@ def discover_tasks() -> list:
     return tasks
 
 
-def main() -> int:
-    """Main entry point.
+def process_config(label: str, config: dict, tasks: list) -> tuple[int, int, int]:
+    """Process a single config through all tasks.
 
     Returns:
-        Exit code (0 for success, 1 for failure).
+        Tuple of (applied, skipped, failed) counts.
     """
-    console.print(Panel.fit(
-        "[bold blue]MinIO Init[/]\n"
-        "[dim]Declarative Object Storage Initialization[/]",
-        border_style="blue",
-    ))
-    console.print()
-
-    # Get MinIO configuration
-    config = get_minio_config()
-
-    if not config["root_password"]:
-        console.print("[red]Error: MINIO_ROOT_PASSWORD not set[/]")
-        return 1
-
-    console.print(f"[dim]Endpoint: {config['endpoint']}[/]")
-    console.print()
-
-    # Wait for MinIO server
-    timeout = int(os.environ.get("MINIO_WAIT_TIMEOUT", "60"))
-    if not wait_for_minio(config, timeout):
-        return 1
-
-    # Configure mc alias
-    console.print("[dim]Configuring MinIO client...[/]")
-    if not setup_mc_alias(config):
-        console.print("[red]Error: Failed to configure mc alias[/]")
-        return 1
-
-    console.print("[green]MinIO client configured[/]")
-    console.print()
-
-    # Load configuration
-    config_path = os.environ.get("MINIO_INIT_CONFIG", "/app/config/init.json")
-    try:
-        init_config = load_config(config_path)
-    except ValueError as e:
-        console.print(f"[red]Error resolving config: {e}[/]")
-        return 1
-    except json.JSONDecodeError as e:
-        console.print(f"[red]Error parsing config JSON: {e}[/]")
-        return 1
-
-    console.print(f"[dim]Config: {config_path}[/]")
-    console.print()
-
-    # Discover and run tasks
-    tasks = discover_tasks()
-
-    if not tasks:
-        console.print("[yellow]No initialization tasks found[/]")
-        return 0
-
-    console.print(f"[bold]Found {len(tasks)} initialization task(s)[/]")
-    console.print()
-
-    failed = 0
+    applied = 0
     skipped = 0
+    failed = 0
 
     for task in tasks:
         task_name = task["name"]
         config_key = task["config_key"]
 
         # Skip tasks with no config data
-        if config_key and not init_config.get(config_key):
-            console.print(f"[dim]- {task_name}: Skipped (no configuration)[/]")
+        if config_key and not config.get(config_key):
             skipped += 1
             continue
 
@@ -275,16 +202,18 @@ def main() -> int:
             console.print(f"  [dim]{task['description']}[/]")
 
         try:
-            items = init_config.get(config_key, []) if config_key else []
+            items = config.get(config_key, []) if config_key else []
             result = task["module"].run(items, console)
 
             if result.get("skipped"):
-                console.print(f"  [dim]- Skipped: {result.get('message', 'Not applicable')}[/]")
+                console.print(f"  [dim]Skipped: {result.get('message', 'Not applicable')}[/]")
                 skipped += 1
             elif result.get("changed"):
-                console.print(f"  [green]+ Applied: {result.get('message', 'Done')}[/]")
+                console.print(f"  [green]+ {result.get('message', 'Done')}[/]")
+                applied += 1
             else:
-                console.print(f"  [blue]= No changes: {result.get('message', 'Already configured')}[/]")
+                console.print(f"  [blue]= {result.get('message', 'Already configured')}[/]")
+                applied += 1
 
         except Exception as e:
             console.print(f"  [red]x Failed: {e}[/]")
@@ -292,16 +221,87 @@ def main() -> int:
 
         console.print()
 
-    # Summary
-    console.print("-" * 50)
-    total = len(tasks)
-    success = total - failed - skipped
+    return applied, skipped, failed
 
-    if failed == 0:
-        console.print(f"[green]Initialization complete ({success} applied, {skipped} skipped)[/]")
+
+def main() -> int:
+    """Main entry point."""
+    console.print(Panel.fit(
+        "[bold blue]MinIO Init[/]\n"
+        "[dim]Declarative Object Storage Initialization[/]",
+        border_style="blue",
+    ))
+    console.print()
+
+    # Get MinIO configuration
+    minio_config = get_minio_config()
+
+    if not minio_config["root_password"]:
+        console.print("[red]Error: MINIO_ROOT_PASSWORD not set[/]")
+        return 1
+
+    console.print(f"[dim]Endpoint: {minio_config['endpoint']}[/]")
+    console.print()
+
+    # Wait for MinIO server
+    timeout = int(os.environ.get("MINIO_WAIT_TIMEOUT", "60"))
+    if not wait_for_minio(minio_config, timeout):
+        return 1
+
+    # Configure mc alias
+    console.print("[dim]Configuring MinIO client...[/]")
+    if not setup_mc_alias(minio_config):
+        console.print("[red]Error: Failed to configure mc alias[/]")
+        return 1
+
+    console.print("[green]MinIO client configured[/]")
+    console.print()
+
+    # Discover tasks
+    tasks = discover_tasks()
+    if not tasks:
+        console.print("[yellow]No initialization tasks found[/]")
+        return 0
+
+    # Discover and load configs
+    try:
+        configs = discover_configs()
+    except (ValueError, json.JSONDecodeError) as e:
+        console.print(f"[red]Error loading config: {e}[/]")
+        return 1
+
+    if not configs:
+        console.print("[yellow]No configuration files found[/]")
+        return 0
+
+    # Process each config through all tasks
+    total_applied = 0
+    total_skipped = 0
+    total_failed = 0
+
+    for label, config in configs:
+        console.print(f"[bold cyan]── Processing {label} configuration ──[/]")
+        console.print()
+
+        applied, skipped, failed = process_config(label, config, tasks)
+        total_applied += applied
+        total_skipped += skipped
+        total_failed += failed
+
+    # Summary
+    console.print("─" * 50)
+
+    if total_failed == 0:
+        console.print(
+            f"[green]Initialization complete "
+            f"({total_applied} applied, {total_skipped} skipped)[/]"
+        )
         return 0
     else:
-        console.print(f"[red]Initialization failed ({failed} errors, {success} applied, {skipped} skipped)[/]")
+        console.print(
+            f"[red]Initialization had errors "
+            f"({total_failed} failed, {total_applied} applied, {total_skipped} skipped)[/]"
+        )
         return 1
 
 

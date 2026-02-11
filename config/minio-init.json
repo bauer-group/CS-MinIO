@@ -4,12 +4,26 @@
       "name": "documents",
       "region": "eu-central-1",
       "versioning": true,
+      "quota": { "type": "hard", "size": "10GB" },
       "policy": "private"
+    },
+    {
+      "name": "backups",
+      "region": "eu-central-1",
+      "versioning": true,
+      "object_lock": true,
+      "retention": { "mode": "compliance", "days": 365 },
+      "policy": "private"
+    },
+    {
+      "name": "public-assets",
+      "region": "eu-central-1",
+      "policy": "public"
     }
   ],
   "policies": [
     {
-      "name": "readwrite-documents",
+      "name": "pDocumentsReadWrite",
       "statements": [
         {
           "Effect": "Allow",
@@ -18,9 +32,7 @@
             "s3:PutObject",
             "s3:DeleteObject",
             "s3:ListBucket",
-            "s3:GetBucketLocation",
-            "s3:ListMultipartUploadParts",
-            "s3:AbortMultipartUpload"
+            "s3:GetBucketLocation"
           ],
           "Resource": [
             "arn:aws:s3:::documents",
@@ -30,24 +42,36 @@
       ]
     },
     {
-      "name": "admin-console-full",
+      "name": "pBackupsWriteOnly",
       "statements": [
         {
           "Effect": "Allow",
           "Action": [
-            "admin:*"
+            "s3:PutObject",
+            "s3:GetBucketLocation"
           ],
           "Resource": [
-            "arn:aws:s3:::*"
+            "arn:aws:s3:::backups",
+            "arn:aws:s3:::backups/*"
           ]
-        },
+        }
+      ]
+    },
+    {
+      "name": "pPublicAssetsReadWrite",
+      "statements": [
         {
           "Effect": "Allow",
           "Action": [
-            "s3:*"
+            "s3:GetObject",
+            "s3:PutObject",
+            "s3:DeleteObject",
+            "s3:ListBucket",
+            "s3:GetBucketLocation"
           ],
           "Resource": [
-            "arn:aws:s3:::*"
+            "arn:aws:s3:::public-assets",
+            "arn:aws:s3:::public-assets/*"
           ]
         }
       ]
@@ -55,23 +79,37 @@
   ],
   "groups": [
     {
-      "name": "app-services",
-      "policies": ["readwrite-documents"]
+      "name": "gApplications",
+      "policies": ["pDocumentsReadWrite", "pPublicAssetsReadWrite"]
+    },
+    {
+      "name": "gBackupAgents",
+      "policies": ["pBackupsWriteOnly"]
     }
   ],
   "users": [
     {
-      "access_key": "app-service",
-      "secret_key": "${APP_SERVICE_SECRET_KEY}",
-      "groups": ["app-services"],
-      "policies": []
+      "access_key": "${APP_USER}",
+      "secret_key": "${APP_PASSWORD}",
+      "groups": ["gApplications"]
     },
     {
-      "access_key": "${CONSOLE_USER}",
-      "secret_key": "${CONSOLE_PASSWORD}",
-      "groups": [],
-      "policies": ["admin-console-full"]
+      "access_key": "${BACKUP_USER}",
+      "secret_key": "${BACKUP_PASSWORD}",
+      "groups": ["gBackupAgents"]
     }
   ],
-  "service_accounts": []
+  "service_accounts": [
+    {
+      "user": "${APP_USER}",
+      "name": "app-worker",
+      "description": "Worker service account for document processing"
+    },
+    {
+      "user": "${BACKUP_USER}",
+      "name": "backup-agent",
+      "description": "Automated backup agent",
+      "policy": "pBackupsWriteOnly"
+    }
+  ]
 }

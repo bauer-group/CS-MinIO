@@ -120,13 +120,15 @@ services:
       - MINIO_ROOT_USER=${MINIO_ROOT_USER:-admin}
       - MINIO_ROOT_PASSWORD=${MINIO_ROOT_PASSWORD}
       - MINIO_WAIT_TIMEOUT=${MINIO_WAIT_TIMEOUT:-60}
-      - MINIO_INIT_CONFIG=/app/config/init.json
-      # Pass through environment variables referenced in minio-init.json
-      - APP_SERVICE_SECRET_KEY=${APP_SERVICE_SECRET_KEY:-}
+      # Pass through environment variables used in config JSON files
       - CONSOLE_USER=${CONSOLE_USER:-console-admin}
       - CONSOLE_PASSWORD=${CONSOLE_PASSWORD:-}
+      # Add additional env vars here that are referenced in your minio-init.json:
+      # - APP_USER=${APP_USER:-}
+      # - APP_PASSWORD=${APP_PASSWORD:-}
     volumes:
       - ${MINIO_INIT_CONFIG:-./config/minio-init.json}:/app/config/init.json:ro
+      - minio-credentials:/data/credentials
     depends_on:
       minio-server:
         condition: service_healthy
@@ -139,6 +141,9 @@ volumes:
   minio-data:
     driver: local
     name: ${STACK_NAME:-s3-app}-data
+  minio-credentials:
+    driver: local
+    name: ${STACK_NAME:-s3-app}-credentials
 
 
 ### Networks ###
