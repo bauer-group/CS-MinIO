@@ -14,6 +14,14 @@
 # Documentation: https://github.com/bauer-group/CS-MinIO
 # ===============================================================================
 
+# ---------------------------------------------------------------------------
+# Extract mc client from official Docker image (safer than direct download,
+# as MinIO may discontinue the CDN at any time)
+# ---------------------------------------------------------------------------
+ARG MC_IMAGE=quay.io/minio/mc
+ARG MC_VERSION=latest
+FROM ${MC_IMAGE}:${MC_VERSION} AS mc-source
+
 FROM python:3.14-alpine
 
 # ---------------------------------------------------------------------------
@@ -43,11 +51,10 @@ ENV PYTHONUNBUFFERED=1
 # ---------------------------------------------------------------------------
 # Dependencies
 # ---------------------------------------------------------------------------
+COPY --from=mc-source /usr/bin/mc /usr/local/bin/mc
 RUN apk add --no-cache \
         curl \
         tini \
-    && curl -fsSL https://dl.min.io/client/mc/release/linux-amd64/mc -o /usr/local/bin/mc \
-    && chmod +x /usr/local/bin/mc \
     && pip install --no-cache-dir rich \
     && rm -rf /var/cache/apk/*
 

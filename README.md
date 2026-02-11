@@ -27,7 +27,7 @@ Production-ready [MinIO](https://min.io/) S3-compatible object storage deploymen
 3. **Edit `.env`** - Set at minimum:
    - `MINIO_ROOT_PASSWORD` - Admin password
    - `APP_SERVICE_SECRET_KEY` - Application service account secret
-   - `ADMIN_CONSOLE_PASSWORD` - Admin console user password (if using admin console)
+   - `CONSOLE_PASSWORD` - Console user password (if using admin console)
 
 4. **Edit `config/minio-init.json`** - Configure buckets, policies, users as needed
 

@@ -2,7 +2,7 @@
   "buckets": [
     {
       "name": "documents",
-      "region": "us-east-1",
+      "region": "eu-central-1",
       "versioning": true,
       "policy": "private"
     }
@@ -67,8 +67,8 @@
       "policies": []
     },
     {
-      "access_key": "${ADMIN_CONSOLE_USER}",
-      "secret_key": "${ADMIN_CONSOLE_PASSWORD}",
+      "access_key": "${CONSOLE_USER}",
+      "secret_key": "${CONSOLE_PASSWORD}",
       "groups": [],
       "policies": ["admin-console-full"]
     }

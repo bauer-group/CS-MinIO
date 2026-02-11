@@ -41,8 +41,8 @@ services:
     environment:
       - TZ=${TIME_ZONE:-Etc/UTC}
       - MINIO_ENDPOINT=http://minio-server:9000
-      - MINIO_ACCESS_KEY=${ADMIN_CONSOLE_USER:-console-admin}
-      - MINIO_SECRET_KEY=${ADMIN_CONSOLE_PASSWORD}
+      - MINIO_ACCESS_KEY=${CONSOLE_USER:-console-admin}
+      - MINIO_SECRET_KEY=${CONSOLE_PASSWORD}
     expose:
       - 9090/tcp
     ports:

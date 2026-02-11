@@ -9,6 +9,13 @@
       "description": "MinIO S3-compatible object storage server"
     },
     {
+      "name": "minio-mc",
+      "image": "quay.io/minio/mc",
+      "tag": "latest",
+      "variable": "MINIO_MC_DIGEST",
+      "description": "MinIO Client (mc) - extracted into minio-init image"
+    },
+    {
       "name": "python-alpine",
       "image": "python",
       "tag": "3.14-alpine",

@@ -127,10 +127,18 @@ services:
       # Requires: MINIO_DOMAIN=${S3_HOSTNAME} (set above in environment)
       #
       # Option A: Wildcard certificate (requires DNS challenge)
+      #
+      #   Traefik v2 syntax:
       # - "traefik.http.routers.${STACK_NAME:-s3-app}-s3-buckets-http.rule=HostRegexp(`{subdomain:.+}.${S3_HOSTNAME}`)"
+      # - "traefik.http.routers.${STACK_NAME:-s3-app}-s3-buckets.rule=HostRegexp(`{subdomain:.+}.${S3_HOSTNAME}`)"
+      #
+      #   Traefik v3 syntax:
+      # - "traefik.http.routers.${STACK_NAME:-s3-app}-s3-buckets-http.rule=HostRegexp(`.+\\.${S3_HOSTNAME}`)"
+      # - "traefik.http.routers.${STACK_NAME:-s3-app}-s3-buckets.rule=HostRegexp(`.+\\.${S3_HOSTNAME}`)"
+      #
+      #   Common labels (both versions):
       # - "traefik.http.routers.${STACK_NAME:-s3-app}-s3-buckets-http.entrypoints=web"
       # - "traefik.http.routers.${STACK_NAME:-s3-app}-s3-buckets-http.middlewares=${STACK_NAME:-s3-app}-redirect-to-secure"
-      # - "traefik.http.routers.${STACK_NAME:-s3-app}-s3-buckets.rule=HostRegexp(`{subdomain:.+}.${S3_HOSTNAME}`)"
       # - "traefik.http.routers.${STACK_NAME:-s3-app}-s3-buckets.entrypoints=web-secure"
       # - "traefik.http.routers.${STACK_NAME:-s3-app}-s3-buckets.tls=true"
       # - "traefik.http.routers.${STACK_NAME:-s3-app}-s3-buckets.tls.certresolver=letsencrypt"
@@ -163,8 +171,8 @@ services:
       - MINIO_INIT_CONFIG=/app/config/init.json
       # Pass through environment variables referenced in minio-init.json
       - APP_SERVICE_SECRET_KEY=${APP_SERVICE_SECRET_KEY:-}
-      - ADMIN_CONSOLE_USER=${ADMIN_CONSOLE_USER:-console-admin}
-      - ADMIN_CONSOLE_PASSWORD=${ADMIN_CONSOLE_PASSWORD:-}
+      - CONSOLE_USER=${CONSOLE_USER:-console-admin}
+      - CONSOLE_PASSWORD=${CONSOLE_PASSWORD:-}
     volumes:
       - ${MINIO_INIT_CONFIG:-./config/minio-init.json}:/app/config/init.json:ro
     depends_on:

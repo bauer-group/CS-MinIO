@@ -81,8 +81,8 @@ services:
       - MINIO_INIT_CONFIG=/app/config/init.json
       # Pass through environment variables referenced in minio-init.json
       - APP_SERVICE_SECRET_KEY=${APP_SERVICE_SECRET_KEY:-}
-      - ADMIN_CONSOLE_USER=${ADMIN_CONSOLE_USER:-console-admin}
-      - ADMIN_CONSOLE_PASSWORD=${ADMIN_CONSOLE_PASSWORD:-}
+      - CONSOLE_USER=${CONSOLE_USER:-console-admin}
+      - CONSOLE_PASSWORD=${CONSOLE_PASSWORD:-}
     volumes:
       - ${MINIO_INIT_CONFIG:-./config/minio-init.json}:/app/config/init.json:ro
     depends_on:
