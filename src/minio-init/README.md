@@ -122,11 +122,11 @@ Credentials are generated dynamically by MinIO and written to `/data/credentials
 |-------|------------------|--------------------|------------------------------------------------------|
 | 01    | Buckets          | `buckets`          | Create buckets with versioning, lock, quotas         |
 | 02    | Policies         | `policies`         | Create or update IAM policy documents                |
-| 03    | Users            | `users`            | Create users, assign to groups, attach policies      |
-| 04    | Groups           | `groups`           | Attach policies to groups                            |
+| 03    | Groups           | `groups`           | Create groups and attach policies                    |
+| 04    | Users            | `users`            | Create users, assign to groups, attach policies      |
 | 05    | Service Accounts | `service_accounts` | Create service accounts with dynamic credentials     |
 
-> **Note:** Users (03) run before groups (04) because MinIO groups require at least one member. Adding a user to a group implicitly creates it. The groups task then attaches policies.
+> **Note:** Groups are implicitly created when a policy is attached via `mc admin policy attach --group`. Each group must have at least one policy. The users task (04) then adds users as members to the existing groups.
 
 ## Environment Variables
 

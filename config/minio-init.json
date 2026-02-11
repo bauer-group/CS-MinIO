@@ -19,6 +19,13 @@
       "name": "public-assets",
       "region": "eu-central-1",
       "policy": "public"
+    },
+    {
+      "name": "uploads",
+      "region": "eu-central-1",
+      "versioning": true,
+      "quota": { "type": "hard", "size": "50GB" },
+      "policy": "private"
     }
   ],
   "policies": [
@@ -32,7 +39,9 @@
             "s3:PutObject",
             "s3:DeleteObject",
             "s3:ListBucket",
-            "s3:GetBucketLocation"
+            "s3:GetBucketLocation",
+            "s3:ListMultipartUploadParts",
+            "s3:AbortMultipartUpload"
           ],
           "Resource": [
             "arn:aws:s3:::documents",
@@ -48,7 +57,9 @@
           "Effect": "Allow",
           "Action": [
             "s3:PutObject",
-            "s3:GetBucketLocation"
+            "s3:GetBucketLocation",
+            "s3:ListMultipartUploadParts",
+            "s3:AbortMultipartUpload"
           ],
           "Resource": [
             "arn:aws:s3:::backups",
@@ -67,11 +78,35 @@
             "s3:PutObject",
             "s3:DeleteObject",
             "s3:ListBucket",
-            "s3:GetBucketLocation"
+            "s3:GetBucketLocation",
+            "s3:ListMultipartUploadParts",
+            "s3:AbortMultipartUpload"
           ],
           "Resource": [
             "arn:aws:s3:::public-assets",
             "arn:aws:s3:::public-assets/*"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "pUploadsReadWrite",
+      "statements": [
+        {
+          "Effect": "Allow",
+          "Action": [
+            "s3:GetObject",
+            "s3:PutObject",
+            "s3:DeleteObject",
+            "s3:ListBucket",
+            "s3:GetBucketLocation",
+            "s3:ListMultipartUploadParts",
+            "s3:AbortMultipartUpload",
+            "s3:ListBucketMultipartUploads"
+          ],
+          "Resource": [
+            "arn:aws:s3:::uploads",
+            "arn:aws:s3:::uploads/*"
           ]
         }
       ]
@@ -80,7 +115,7 @@
   "groups": [
     {
       "name": "gApplications",
-      "policies": ["pDocumentsReadWrite", "pPublicAssetsReadWrite"]
+      "policies": ["pDocumentsReadWrite", "pPublicAssetsReadWrite", "pUploadsReadWrite"]
     },
     {
       "name": "gBackupAgents",

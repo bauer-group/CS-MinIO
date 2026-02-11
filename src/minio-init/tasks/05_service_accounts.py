@@ -113,7 +113,7 @@ def _write_credentials(sa_name: str, credentials: dict) -> str:
     return str(creds_file)
 
 
-def run(items: list, console) -> dict:
+def run(items: list, console, **kwargs) -> dict:
     if not items:
         return {"skipped": True, "message": "No service accounts configured"}
 

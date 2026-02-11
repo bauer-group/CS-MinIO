@@ -48,7 +48,7 @@ def _policy_exists(name: str) -> bool:
     return result.returncode == 0
 
 
-def run(items: list, console) -> dict:
+def run(items: list, console, **kwargs) -> dict:
     if not items:
         return {"skipped": True, "message": "No policies configured"}
 

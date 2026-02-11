@@ -39,7 +39,7 @@ def get_minio_config() -> dict:
     return {
         "endpoint": os.environ.get("MINIO_ENDPOINT", "http://minio-server:9000"),
         "root_user": os.environ.get("MINIO_ROOT_USER", "minioadmin"),
-        "root_password": os.environ.get("MINIO_ROOT_PASSWORD", ""),
+        "root_password": os.environ.get("MINIO_ROOT_PASSWORD", "minioadmin"),
     }
 
 
@@ -203,7 +203,7 @@ def process_config(label: str, config: dict, tasks: list) -> tuple[int, int, int
 
         try:
             items = config.get(config_key, []) if config_key else []
-            result = task["module"].run(items, console)
+            result = task["module"].run(items, console, config=config)
 
             if result.get("skipped"):
                 console.print(f"  [dim]Skipped: {result.get('message', 'Not applicable')}[/]")

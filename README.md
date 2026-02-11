@@ -113,8 +113,8 @@ All operations are idempotent. The init container runs on every start.
 |----------------------|---------------------------------------------------------------------|
 | `buckets`            | Create buckets with versioning, object-lock/WORM, quotas, retention |
 | `policies`           | Create or update custom IAM policy documents                        |
+| `groups`             | Create groups and attach policies                                   |
 | `users`              | Create users, assign to groups, attach direct policies              |
-| `groups`             | Attach policies to groups                                           |
 | `service_accounts`   | Create service accounts with dynamic server-generated credentials   |
 
 **Environment variable resolution:** JSON values support `${VAR_NAME}` syntax. Variables are resolved from the container's environment at runtime, keeping secrets out of config files.
@@ -223,8 +223,8 @@ Virtual-host-style bucket access (e.g., `bucket.s3.example.com`) is prepared but
 │       └── tasks/
 │           ├── 01_buckets.py       # Bucket creation and configuration
 │           ├── 02_policies.py      # IAM policy create/update
-│           ├── 03_users.py         # User creation and group assignment
-│           ├── 04_groups.py        # Group policy attachment
+│           ├── 03_groups.py        # Group creation and policy attachment
+│           ├── 04_users.py         # User creation and group assignment
 │           └── 05_service_accounts.py  # Service accounts (dynamic credentials)
 ├── config/
 │   └── minio-init.json             # Init container configuration (user-facing)

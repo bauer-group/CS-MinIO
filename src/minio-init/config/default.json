@@ -18,7 +18,7 @@
   ],
   "users": [
     {
-      "access_key": "${CONSOLE_USER}",
+      "access_key": "",
       "secret_key": "${CONSOLE_PASSWORD}",
       "groups": ["gAdministrators"]
     }

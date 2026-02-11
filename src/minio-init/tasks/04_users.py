@@ -1,10 +1,12 @@
 """
 User Creation Task
 
-Creates MinIO users with optional group membership and direct policy
-attachments. Runs BEFORE the groups task because MinIO groups require
-at least one member to exist - adding a user to a group implicitly
-creates that group.
+Creates MinIO users with group membership and direct policy attachments.
+Runs AFTER the groups task in the order: bucket → policy → group → user.
+
+Groups already exist at this point (created by policy attachment in
+03_groups.py). This task adds users as members and attaches any direct
+user-level policies.
 
 JSON config example:
 {
@@ -17,11 +19,6 @@ JSON config example:
     }
   ]
 }
-
-Notes:
-  - mc admin user add is idempotent: updates password if user exists.
-  - Adding a user to a non-existent group creates the group implicitly.
-  - The groups task (04_groups.py) then attaches policies to these groups.
 """
 
 import subprocess
@@ -41,7 +38,7 @@ def _mc(args: list) -> subprocess.CompletedProcess:
     )
 
 
-def run(items: list, console) -> dict:
+def run(items: list, console, **kwargs) -> dict:
     if not items:
         return {"skipped": True, "message": "No users configured"}
 
@@ -61,7 +58,7 @@ def run(items: list, console) -> dict:
             console.print(f"    [red]Failed to create user {access_key}: {result.stderr.strip()}[/]")
             continue
 
-        # Add to groups (implicitly creates groups if they don't exist)
+        # Add to groups (groups already exist from 03_groups task)
         for group_name in user.get("groups", []):
             result = _mc(["admin", "group", "add", MC_ALIAS, group_name, access_key])
             if result.returncode == 0:
