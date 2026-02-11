@@ -1,0 +1,23 @@
+{
+  "$schema": "https://raw.githubusercontent.com/bauer-group/automation-templates/main/.github/config/docker-base-image-monitor/docker-base-images.schema.json",
+  "images": [
+    {
+      "name": "minio",
+      "image": "quay.io/minio/minio",
+      "tag": "RELEASE.2025-10-15T17-29-55Z",
+      "variable": "MINIO_RELEASE_DIGEST",
+      "description": "MinIO S3-compatible object storage server"
+    },
+    {
+      "name": "python-alpine",
+      "image": "python",
+      "tag": "3.13-alpine",
+      "variable": "PYTHON_ALPINE_DIGEST",
+      "description": "Python Alpine base image for minio-init"
+    }
+  ],
+  "settings": {
+    "commit-prefix": "chore(deps)",
+    "auto-create-variables": true
+  }
+}

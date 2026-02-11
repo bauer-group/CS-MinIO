@@ -1,0 +1,143 @@
+# =============================================================================
+# MinIO - Single Server Mode (Direct Port Access)
+# =============================================================================
+# Usage: docker compose -f docker-compose-single.yml up -d
+#
+# Features:
+#   - Single MinIO server with direct port binding
+#   - Init container for declarative bucket/user setup
+#   - Optional admin console (--profile admin-console)
+#   - IPv4 and IPv6 support
+#
+# Access:
+#   - S3 API:  http://localhost:${EXPOSED_API_PORT}
+#   - Console: http://localhost:${EXPOSED_CONSOLE_PORT}
+#
+# With Admin Console:
+#   docker compose -f docker-compose-single.yml --profile admin-console up -d
+#   - Admin UI: http://localhost:${ADMIN_CONSOLE_PORT}
+# =============================================================================
+
+
+### Service Templates ###
+x-minio-common: &minio-common
+  image: ${MINIO_IMAGE:-ghcr.io/bauer-group/cs-minio/minio}:${MINIO_VERSION:-stable}
+  restart: unless-stopped
+  logging:
+    driver: json-file
+    options:
+      max-size: "50m"
+      max-file: "3"
+  command: server --address ":9000" --console-address ":9001" /data
+  environment:
+    - TZ=${TIME_ZONE:-Etc/UTC}
+    - MINIO_ROOT_USER=${MINIO_ROOT_USER:-admin}
+    - MINIO_ROOT_PASSWORD=${MINIO_ROOT_PASSWORD}
+    - MINIO_REGION_NAME=${MINIO_REGION:-us-east-1}
+    - MINIO_BROWSER_REDIRECT=false
+  healthcheck:
+    test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+    interval: 30s
+    timeout: 10s
+    start_period: 30s
+    retries: 4
+  expose:
+    - 9000/tcp
+    - 9001/tcp
+  networks:
+    local:
+
+
+services:
+### Application Services ###
+
+  # MinIO S3 Server
+  minio-server:
+    <<: *minio-common
+    container_name: ${STACK_NAME:-s3-app}_SERVER
+    hostname: minio-server
+    volumes:
+      - minio-data:/data
+    ports:
+      - "${EXPOSED_API_PORT:-9000}:9000"
+      - "${EXPOSED_CONSOLE_PORT:-9001}:9001"
+
+### Initialization ###
+
+  # MinIO Init Container (runs on every start, idempotent)
+  minio-init:
+    image: ${MINIO_INIT_IMAGE:-ghcr.io/bauer-group/cs-minio/minio-init}:${MINIO_INIT_VERSION:-stable}
+    container_name: ${STACK_NAME:-s3-app}_INIT
+    restart: "no"
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "1"
+    environment:
+      - TZ=${TIME_ZONE:-Etc/UTC}
+      - MINIO_ENDPOINT=http://minio-server:9000
+      - MINIO_ROOT_USER=${MINIO_ROOT_USER:-admin}
+      - MINIO_ROOT_PASSWORD=${MINIO_ROOT_PASSWORD}
+      - MINIO_WAIT_TIMEOUT=${MINIO_WAIT_TIMEOUT:-60}
+      - MINIO_INIT_CONFIG=/app/config/init.json
+      # Pass through environment variables referenced in minio-init.json
+      - APP_SERVICE_SECRET_KEY=${APP_SERVICE_SECRET_KEY:-}
+      - ADMIN_CONSOLE_USER=${ADMIN_CONSOLE_USER:-console-admin}
+      - ADMIN_CONSOLE_PASSWORD=${ADMIN_CONSOLE_PASSWORD:-}
+    volumes:
+      - ${MINIO_INIT_CONFIG:-./config/minio-init.json}:/app/config/init.json:ro
+    depends_on:
+      minio-server:
+        condition: service_healthy
+    networks:
+      local:
+
+### Optional Services ###
+
+  # Admin Console (enable with: --profile admin-console)
+  # Required since MinIO removed built-in admin UI in RELEASE.2025-05-24
+  minio-admin-console:
+    image: ghcr.io/karlspace/minio-ui/minio-admin-console:latest
+    container_name: ${STACK_NAME:-s3-app}_ADMIN_CONSOLE
+    profiles: ["admin-console"]
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "3"
+    environment:
+      - TZ=${TIME_ZONE:-Etc/UTC}
+      - CONSOLE_MINIO_SERVER=http://minio-server:9000
+      - CONSOLE_MINIO_REGION=${MINIO_REGION:-us-east-1}
+    ports:
+      - "${ADMIN_CONSOLE_PORT:-9002}:9090"
+    depends_on:
+      minio-server:
+        condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
+    networks:
+      local:
+
+
+### Volumes ###
+volumes:
+  minio-data:
+    driver: local
+    name: ${STACK_NAME:-s3-app}-data
+
+
+### Networks ###
+networks:
+  local:
+    driver: bridge
+    name: ${STACK_NAME:-s3-app}
+    enable_ipv6: true
+    ipam:
+      config:
+        - subnet: 10.25.${PRIVATESUBNET:-254}.0/24
+          gateway: 10.25.${PRIVATESUBNET:-254}.1
+        - subnet: fdfd:10:25:${PRIVATESUBNET:-254}::/64
+          gateway: fdfd:10:25:${PRIVATESUBNET:-254}::1

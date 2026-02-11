@@ -1,0 +1,77 @@
+{
+  "buckets": [
+    {
+      "name": "documents",
+      "region": "us-east-1",
+      "versioning": true,
+      "policy": "private"
+    }
+  ],
+  "policies": [
+    {
+      "name": "readwrite-documents",
+      "statements": [
+        {
+          "Effect": "Allow",
+          "Action": [
+            "s3:GetObject",
+            "s3:PutObject",
+            "s3:DeleteObject",
+            "s3:ListBucket",
+            "s3:GetBucketLocation",
+            "s3:ListMultipartUploadParts",
+            "s3:AbortMultipartUpload"
+          ],
+          "Resource": [
+            "arn:aws:s3:::documents",
+            "arn:aws:s3:::documents/*"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "admin-console-full",
+      "statements": [
+        {
+          "Effect": "Allow",
+          "Action": [
+            "admin:*"
+          ],
+          "Resource": [
+            "arn:aws:s3:::*"
+          ]
+        },
+        {
+          "Effect": "Allow",
+          "Action": [
+            "s3:*"
+          ],
+          "Resource": [
+            "arn:aws:s3:::*"
+          ]
+        }
+      ]
+    }
+  ],
+  "groups": [
+    {
+      "name": "app-services",
+      "policies": ["readwrite-documents"]
+    }
+  ],
+  "users": [
+    {
+      "access_key": "app-service",
+      "secret_key": "${APP_SERVICE_SECRET_KEY}",
+      "groups": ["app-services"],
+      "policies": []
+    },
+    {
+      "access_key": "${ADMIN_CONSOLE_USER}",
+      "secret_key": "${ADMIN_CONSOLE_PASSWORD}",
+      "groups": [],
+      "policies": ["admin-console-full"]
+    }
+  ],
+  "service_accounts": []
+}

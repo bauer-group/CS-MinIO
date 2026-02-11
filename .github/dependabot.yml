@@ -1,0 +1,53 @@
+# =============================================================================
+# Dependabot Configuration
+# =============================================================================
+# Monitors Docker base images and GitHub Actions for updates.
+# Combined with docker-maintenance.yml workflow for auto-merge and release.
+# =============================================================================
+
+version: 2
+updates:
+  # GitHub Actions updates
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "sunday"
+      time: "06:30"
+      timezone: "Etc/UTC"
+    labels:
+      - "dependencies"
+      - "github-actions"
+      - "dependabot"
+    commit-message:
+      prefix: "chore(ci)"
+
+  # Docker base image updates - MinIO server
+  - package-ecosystem: "docker"
+    directory: "/src/minio"
+    schedule:
+      interval: "weekly"
+      day: "sunday"
+      time: "06:30"
+      timezone: "Etc/UTC"
+    labels:
+      - "dependencies"
+      - "docker"
+      - "dependabot"
+    commit-message:
+      prefix: "chore(docker)"
+
+  # Docker base image updates - MinIO init
+  - package-ecosystem: "docker"
+    directory: "/src/minio-init"
+    schedule:
+      interval: "weekly"
+      day: "sunday"
+      time: "06:30"
+      timezone: "Etc/UTC"
+    labels:
+      - "dependencies"
+      - "docker"
+      - "dependabot"
+    commit-message:
+      prefix: "chore(docker)"

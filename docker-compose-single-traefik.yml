@@ -1,0 +1,242 @@
+# =============================================================================
+# MinIO - Single Server Mode (Traefik Reverse Proxy)
+# =============================================================================
+# Usage: docker compose -f docker-compose-single-traefik.yml up -d
+#
+# Prerequisites:
+#   - Traefik reverse proxy running on the ${PROXY_NETWORK} network
+#   - DNS records pointing to this server:
+#     - ${S3_HOSTNAME}         -> S3 API (path-style access)
+#     - ${S3_CONSOLE_HOSTNAME} -> MinIO Console (Object Browser)
+#     - ${ADMIN_CONSOLE_HOSTNAME} -> Admin Console (optional)
+#
+# Features:
+#   - HTTPS via Let's Encrypt (automatic certificate management)
+#   - S3 path-style access with no-buffering for large uploads
+#   - Separate endpoints for S3 API and Console
+#   - Init container for declarative bucket/user setup
+#   - Optional admin console (--profile admin-console)
+#   - IPv4 and IPv6 support
+#
+# DNS-Style Bucket Access:
+#   For virtual-host-style access (e.g., bucket.s3.example.com), uncomment
+#   the HostRegexp rules below and configure wildcard certificates or
+#   explicit SANs for each bucket hostname.
+#
+# Access:
+#   - S3 API:  https://${S3_HOSTNAME}
+#   - Console: https://${S3_CONSOLE_HOSTNAME}
+#
+# With Admin Console:
+#   docker compose -f docker-compose-single-traefik.yml --profile admin-console up -d
+#   - Admin UI: https://${ADMIN_CONSOLE_HOSTNAME}
+# =============================================================================
+
+
+### Service Templates ###
+x-minio-common: &minio-common
+  image: ${MINIO_IMAGE:-ghcr.io/bauer-group/cs-minio/minio}:${MINIO_VERSION:-stable}
+  restart: unless-stopped
+  logging:
+    driver: json-file
+    options:
+      max-size: "50m"
+      max-file: "3"
+  command: server --address ":9000" --console-address ":9001" /data
+  environment:
+    - TZ=${TIME_ZONE:-Etc/UTC}
+    - MINIO_ROOT_USER=${MINIO_ROOT_USER:-admin}
+    - MINIO_ROOT_PASSWORD=${MINIO_ROOT_PASSWORD}
+    - MINIO_REGION_NAME=${MINIO_REGION:-us-east-1}
+    # Enable virtual-host-style bucket access (bucket.s3.example.com)
+    - MINIO_DOMAIN=${S3_HOSTNAME}
+    # Redirect browser requests to the console hostname
+    - MINIO_BROWSER_REDIRECT=true
+    - MINIO_BROWSER_REDIRECT_URL=https://${S3_CONSOLE_HOSTNAME}
+  healthcheck:
+    test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+    interval: 30s
+    timeout: 10s
+    start_period: 30s
+    retries: 4
+  expose:
+    - 9000/tcp
+    - 9001/tcp
+  networks:
+    local:
+
+
+services:
+### Application Services ###
+
+  # MinIO S3 Server
+  minio-server:
+    <<: *minio-common
+    container_name: ${STACK_NAME:-s3-app}_SERVER
+    hostname: minio-server
+    volumes:
+      - minio-data:/data
+    networks:
+      local:
+      proxy:
+    labels:
+      - "traefik.enable=true"
+
+      # ── Middleware: HTTP to HTTPS Redirect ──────────────────────────────
+      - "traefik.http.middlewares.${STACK_NAME:-s3-app}-redirect-to-secure.redirectscheme.scheme=https"
+      - "traefik.http.middlewares.${STACK_NAME:-s3-app}-redirect-to-secure.redirectscheme.permanent=true"
+
+      # ── Middleware: No Buffering (large S3 uploads) ────────────────────
+      - "traefik.http.middlewares.${STACK_NAME:-s3-app}-nobuffer.buffering.maxRequestBodyBytes=0"
+      - "traefik.http.middlewares.${STACK_NAME:-s3-app}-nobuffer.buffering.memRequestBodyBytes=0"
+      - "traefik.http.middlewares.${STACK_NAME:-s3-app}-nobuffer.buffering.maxResponseBodyBytes=0"
+      - "traefik.http.middlewares.${STACK_NAME:-s3-app}-nobuffer.buffering.memResponseBodyBytes=0"
+
+      # ── Router: S3 API - HTTP (redirect to HTTPS) ─────────────────────
+      - "traefik.http.routers.${STACK_NAME:-s3-app}-s3-http.rule=Host(`${S3_HOSTNAME}`)"
+      - "traefik.http.routers.${STACK_NAME:-s3-app}-s3-http.entrypoints=web"
+      - "traefik.http.routers.${STACK_NAME:-s3-app}-s3-http.middlewares=${STACK_NAME:-s3-app}-redirect-to-secure"
+
+      # ── Router: S3 API - HTTPS (path-style access) ────────────────────
+      - "traefik.http.routers.${STACK_NAME:-s3-app}-s3.rule=Host(`${S3_HOSTNAME}`)"
+      - "traefik.http.routers.${STACK_NAME:-s3-app}-s3.entrypoints=web-secure"
+      - "traefik.http.routers.${STACK_NAME:-s3-app}-s3.tls=true"
+      - "traefik.http.routers.${STACK_NAME:-s3-app}-s3.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.${STACK_NAME:-s3-app}-s3.service=${STACK_NAME:-s3-app}-s3"
+      - "traefik.http.routers.${STACK_NAME:-s3-app}-s3.middlewares=${STACK_NAME:-s3-app}-nobuffer"
+
+      # ── Router: Console - HTTP (redirect to HTTPS) ────────────────────
+      - "traefik.http.routers.${STACK_NAME:-s3-app}-console-http.rule=Host(`${S3_CONSOLE_HOSTNAME}`)"
+      - "traefik.http.routers.${STACK_NAME:-s3-app}-console-http.entrypoints=web"
+      - "traefik.http.routers.${STACK_NAME:-s3-app}-console-http.middlewares=${STACK_NAME:-s3-app}-redirect-to-secure"
+
+      # ── Router: Console - HTTPS ────────────────────────────────────────
+      - "traefik.http.routers.${STACK_NAME:-s3-app}-console.rule=Host(`${S3_CONSOLE_HOSTNAME}`)"
+      - "traefik.http.routers.${STACK_NAME:-s3-app}-console.entrypoints=web-secure"
+      - "traefik.http.routers.${STACK_NAME:-s3-app}-console.tls=true"
+      - "traefik.http.routers.${STACK_NAME:-s3-app}-console.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.${STACK_NAME:-s3-app}-console.service=${STACK_NAME:-s3-app}-console"
+
+      # ── Services (backend port mapping) ────────────────────────────────
+      - "traefik.http.services.${STACK_NAME:-s3-app}-s3.loadBalancer.server.port=9000"
+      - "traefik.http.services.${STACK_NAME:-s3-app}-console.loadBalancer.server.port=9001"
+
+      # ── DNS-Style Bucket Access (virtual-host) ─────────────────────────
+      # Uncomment if using wildcard certificates or explicit SANs.
+      # Requires: MINIO_DOMAIN=${S3_HOSTNAME} (set above in environment)
+      #
+      # Option A: Wildcard certificate (requires DNS challenge)
+      # - "traefik.http.routers.${STACK_NAME:-s3-app}-s3-buckets-http.rule=HostRegexp(`{subdomain:.+}.${S3_HOSTNAME}`)"
+      # - "traefik.http.routers.${STACK_NAME:-s3-app}-s3-buckets-http.entrypoints=web"
+      # - "traefik.http.routers.${STACK_NAME:-s3-app}-s3-buckets-http.middlewares=${STACK_NAME:-s3-app}-redirect-to-secure"
+      # - "traefik.http.routers.${STACK_NAME:-s3-app}-s3-buckets.rule=HostRegexp(`{subdomain:.+}.${S3_HOSTNAME}`)"
+      # - "traefik.http.routers.${STACK_NAME:-s3-app}-s3-buckets.entrypoints=web-secure"
+      # - "traefik.http.routers.${STACK_NAME:-s3-app}-s3-buckets.tls=true"
+      # - "traefik.http.routers.${STACK_NAME:-s3-app}-s3-buckets.tls.certresolver=letsencrypt"
+      # - "traefik.http.routers.${STACK_NAME:-s3-app}-s3-buckets.service=${STACK_NAME:-s3-app}-s3"
+      # - "traefik.http.routers.${STACK_NAME:-s3-app}-s3-buckets.middlewares=${STACK_NAME:-s3-app}-nobuffer"
+      #
+      # Option B: Explicit SANs (Let's Encrypt HTTP challenge, max 100 per cert)
+      # - "traefik.http.routers.${STACK_NAME:-s3-app}-s3.tls.domains[0].main=${S3_HOSTNAME}"
+      # - "traefik.http.routers.${STACK_NAME:-s3-app}-s3.tls.domains[0].sans=${S3_BUCKET_SANS}"
+
+
+### Initialization ###
+
+  # MinIO Init Container (runs on every start, idempotent)
+  minio-init:
+    image: ${MINIO_INIT_IMAGE:-ghcr.io/bauer-group/cs-minio/minio-init}:${MINIO_INIT_VERSION:-stable}
+    container_name: ${STACK_NAME:-s3-app}_INIT
+    restart: "no"
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "1"
+    environment:
+      - TZ=${TIME_ZONE:-Etc/UTC}
+      - MINIO_ENDPOINT=http://minio-server:9000
+      - MINIO_ROOT_USER=${MINIO_ROOT_USER:-admin}
+      - MINIO_ROOT_PASSWORD=${MINIO_ROOT_PASSWORD}
+      - MINIO_WAIT_TIMEOUT=${MINIO_WAIT_TIMEOUT:-60}
+      - MINIO_INIT_CONFIG=/app/config/init.json
+      # Pass through environment variables referenced in minio-init.json
+      - APP_SERVICE_SECRET_KEY=${APP_SERVICE_SECRET_KEY:-}
+      - ADMIN_CONSOLE_USER=${ADMIN_CONSOLE_USER:-console-admin}
+      - ADMIN_CONSOLE_PASSWORD=${ADMIN_CONSOLE_PASSWORD:-}
+    volumes:
+      - ${MINIO_INIT_CONFIG:-./config/minio-init.json}:/app/config/init.json:ro
+    depends_on:
+      minio-server:
+        condition: service_healthy
+    networks:
+      local:
+
+### Optional Services ###
+
+  # Admin Console (enable with: --profile admin-console)
+  # Required since MinIO removed built-in admin UI in RELEASE.2025-05-24
+  minio-admin-console:
+    image: ghcr.io/karlspace/minio-ui/minio-admin-console:latest
+    container_name: ${STACK_NAME:-s3-app}_ADMIN_CONSOLE
+    profiles: ["admin-console"]
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "3"
+    environment:
+      - TZ=${TIME_ZONE:-Etc/UTC}
+      - CONSOLE_MINIO_SERVER=http://minio-server:9000
+      - CONSOLE_MINIO_REGION=${MINIO_REGION:-us-east-1}
+    depends_on:
+      minio-server:
+        condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
+    networks:
+      local:
+      proxy:
+    labels:
+      - "traefik.enable=true"
+
+      # ── Router: Admin Console - HTTP (redirect to HTTPS) ───────────────
+      - "traefik.http.routers.${STACK_NAME:-s3-app}-admin-http.rule=Host(`${ADMIN_CONSOLE_HOSTNAME}`)"
+      - "traefik.http.routers.${STACK_NAME:-s3-app}-admin-http.entrypoints=web"
+      - "traefik.http.routers.${STACK_NAME:-s3-app}-admin-http.middlewares=${STACK_NAME:-s3-app}-redirect-to-secure"
+
+      # ── Router: Admin Console - HTTPS ──────────────────────────────────
+      - "traefik.http.routers.${STACK_NAME:-s3-app}-admin.rule=Host(`${ADMIN_CONSOLE_HOSTNAME}`)"
+      - "traefik.http.routers.${STACK_NAME:-s3-app}-admin.entrypoints=web-secure"
+      - "traefik.http.routers.${STACK_NAME:-s3-app}-admin.tls=true"
+      - "traefik.http.routers.${STACK_NAME:-s3-app}-admin.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.${STACK_NAME:-s3-app}-admin.service=${STACK_NAME:-s3-app}-admin"
+
+      # ── Service ────────────────────────────────────────────────────────
+      - "traefik.http.services.${STACK_NAME:-s3-app}-admin.loadBalancer.server.port=9090"
+
+
+### Volumes ###
+volumes:
+  minio-data:
+    driver: local
+    name: ${STACK_NAME:-s3-app}-data
+
+
+### Networks ###
+networks:
+  local:
+    driver: bridge
+    name: ${STACK_NAME:-s3-app}
+    enable_ipv6: true
+    ipam:
+      config:
+        - subnet: 10.25.${PRIVATESUBNET:-254}.0/24
+          gateway: 10.25.${PRIVATESUBNET:-254}.1
+        - subnet: fdfd:10:25:${PRIVATESUBNET:-254}::/64
+          gateway: fdfd:10:25:${PRIVATESUBNET:-254}::1
+
+  proxy:
+    name: ${PROXY_NETWORK:-EDGEPROXY}
+    external: true

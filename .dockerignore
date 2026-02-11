@@ -1,0 +1,29 @@
+# =============================================================================
+# Docker Ignore - Root Level
+# =============================================================================
+
+.git
+.gitignore
+.gitattributes
+.github
+.vscode
+.idea
+.claude
+.DS_Store
+Thumbs.db
+
+*.md
+LICENSE
+CHANGELOG.md
+
+.env
+.env.*
+!.env.example
+
+docker-compose*.yml
+
+__pycache__
+*.py[cod]
+.pytest_cache
+.venv
+venv
