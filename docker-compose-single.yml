@@ -35,8 +35,8 @@ x-minio-common: &minio-common
   command: server --address ":9000" --console-address ":9001" /data
   environment:
     - TZ=${TIME_ZONE:-Etc/UTC}
-    - MINIO_ROOT_USER=${MINIO_ROOT_USER:-admin}
-    - MINIO_ROOT_PASSWORD=${MINIO_ROOT_PASSWORD}
+    - MINIO_ROOT_USER=${MINIO_ROOT_USER:-minioadmin}
+    - MINIO_ROOT_PASSWORD=${MINIO_ROOT_PASSWORD:-minioadmin}
     - MINIO_REGION_NAME=${MINIO_REGION:-eu-central-1}
     # ── Console Mode ──────────────────────────────────────────────────
     # Admin console (default): disable built-in console
