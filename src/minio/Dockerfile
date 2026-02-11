@@ -32,7 +32,6 @@ LABEL maintainer="Karl Bauer <karl.bauer@bauer-group.com>"
 # ---------------------------------------------------------------------------
 LABEL org.opencontainers.image.title="MinIO"
 LABEL org.opencontainers.image.description="MinIO S3-Compatible Object Storage - BAUER GROUP Edition"
-LABEL org.opencontainers.image.version="0.1.0"
 LABEL org.opencontainers.image.vendor="BAUER GROUP"
 LABEL org.opencontainers.image.authors="Karl Bauer <karl.bauer@bauer-group.com>"
 LABEL org.opencontainers.image.licenses="MIT"
@@ -40,6 +39,7 @@ LABEL org.opencontainers.image.source="https://github.com/bauer-group/CS-MinIO"
 LABEL org.opencontainers.image.url="https://github.com/bauer-group/CS-MinIO"
 LABEL org.opencontainers.image.documentation="https://github.com/bauer-group/CS-MinIO#readme"
 LABEL org.opencontainers.image.base.name="${BASE_MINIO_IMAGE}:${BASE_MINIO_VERSION}"
+LABEL org.opencontainers.image.version="0.1.0"
 
 # ---------------------------------------------------------------------------
 # Customizations

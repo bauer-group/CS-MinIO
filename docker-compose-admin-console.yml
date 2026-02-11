@@ -1,0 +1,80 @@
+# =============================================================================
+# MinIO - Admin Console Override
+# =============================================================================
+# Replaces the built-in object browser with the full admin console.
+# Append this file to either base compose file:
+#
+#   docker compose -f docker-compose-single.yml -f docker-compose-admin-console.yml up -d
+#   docker compose -f docker-compose-single-traefik.yml -f docker-compose-admin-console.yml up -d
+#
+# What this override does:
+#   1. Disables MinIO's built-in console (MINIO_BROWSER=off)
+#   2. Removes the console port from minio-server (!override, requires Compose v2.24+)
+#   3. Adds the admin console service on the same console port/hostname
+#
+# The admin console provides full management: users, policies, buckets, monitoring.
+# MinIO's built-in console (since RELEASE.2025-05-24) is object browser only.
+# =============================================================================
+
+
+services:
+
+  # Override: Disable built-in console and keep only the S3 API port
+  minio-server:
+    ports: !override
+      - "${EXPOSED_API_PORT:-9000}:9000"
+    environment:
+      - MINIO_BROWSER=off
+
+
+  # Admin Console (replaces built-in object browser)
+  admin-console:
+    image: ghcr.io/karlspace/minio-ui/minio-admin-console:latest
+    container_name: ${STACK_NAME:-s3-app}_CONSOLE
+    hostname: admin-console
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "3"
+    environment:
+      - TZ=${TIME_ZONE:-Etc/UTC}
+      - MINIO_ENDPOINT=http://minio-server:9000
+      - MINIO_ACCESS_KEY=${ADMIN_CONSOLE_USER:-console-admin}
+      - MINIO_SECRET_KEY=${ADMIN_CONSOLE_PASSWORD}
+    expose:
+      - 9090/tcp
+    ports:
+      - "${EXPOSED_CONSOLE_PORT:-9001}:9090"
+    depends_on:
+      minio-server:
+        condition: service_healthy
+    networks:
+      local:
+      proxy:
+    labels:
+      - "traefik.enable=true"
+
+      # ── Router: Admin Console - HTTP (redirect to HTTPS) ────────────────
+      - "traefik.http.routers.${STACK_NAME:-s3-app}-admin-console-http.rule=Host(`${S3_CONSOLE_HOSTNAME}`)"
+      - "traefik.http.routers.${STACK_NAME:-s3-app}-admin-console-http.entrypoints=web"
+      - "traefik.http.routers.${STACK_NAME:-s3-app}-admin-console-http.middlewares=${STACK_NAME:-s3-app}-redirect-to-secure"
+
+      # ── Router: Admin Console - HTTPS (higher priority than built-in) ───
+      - "traefik.http.routers.${STACK_NAME:-s3-app}-admin-console.rule=Host(`${S3_CONSOLE_HOSTNAME}`)"
+      - "traefik.http.routers.${STACK_NAME:-s3-app}-admin-console.entrypoints=web-secure"
+      - "traefik.http.routers.${STACK_NAME:-s3-app}-admin-console.tls=true"
+      - "traefik.http.routers.${STACK_NAME:-s3-app}-admin-console.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.${STACK_NAME:-s3-app}-admin-console.service=${STACK_NAME:-s3-app}-admin-console"
+      - "traefik.http.routers.${STACK_NAME:-s3-app}-admin-console.priority=10"
+
+      # ── Service (backend port mapping) ──────────────────────────────────
+      - "traefik.http.services.${STACK_NAME:-s3-app}-admin-console.loadBalancer.server.port=9090"
+
+
+### Networks ###
+networks:
+  proxy:
+    name: ${PROXY_NETWORK:-EDGEPROXY}
+    external: true

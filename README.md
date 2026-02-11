@@ -6,7 +6,7 @@ Production-ready [MinIO](https://min.io/) S3-compatible object storage deploymen
 
 - **S3-Compatible API** - Full Amazon S3 API compatibility via MinIO
 - **Declarative Init Container** - JSON-based provisioning of buckets, policies, groups, users, and service accounts
-- **Admin Console** - Optional third-party admin UI (replaces MinIO's removed built-in console)
+- **Admin Console** - Optional third-party admin UI (replaces MinIO's removed built-in admin UI)
 - **Multiple Deployment Modes** - Direct port access or Traefik reverse proxy with automatic HTTPS
 - **DNS-Style Bucket Access** - Prepared virtual-host-style routing (e.g., `bucket.s3.example.com`)
 - **CI/CD Automation** - Semantic releases, Docker image builds, base image monitoring, auto-merge
@@ -42,8 +42,8 @@ Production-ready [MinIO](https://min.io/) S3-compatible object storage deploymen
 
 6. **Access MinIO**
 
-   | Mode | S3 API | Object Browser |
-   |------|--------|----------------|
+   | Mode | S3 API | Console |
+   |------|--------|---------|
    | Single | `http://localhost:9000` | `http://localhost:9001` |
    | Traefik | `https://{S3_HOSTNAME}` | `https://{S3_CONSOLE_HOSTNAME}` |
 
@@ -53,17 +53,22 @@ Production-ready [MinIO](https://min.io/) S3-compatible object storage deploymen
 ┌──────────────────────────────────────────────────────────┐
 │                    Docker Compose Stack                   │
 │                                                          │
-│  ┌──────────────┐    ┌──────────────┐    ┌────────────┐  │
-│  │ minio-server │◄───│  minio-init  │    │   admin-   │  │
-│  │              │    │  (one-shot)  │    │  console   │  │
-│  │  S3 API      │    │              │    │ (optional) │  │
-│  │  :9000       │    │  Applies     │    │  :9090     │  │
-│  │              │    │  JSON config │    │            │  │
-│  │  Console     │    │  on start    │    │  Full      │  │
-│  │  :9001       │    └──────────────┘    │  admin UI  │  │
-│  └──────────────┘                        └────────────┘  │
-│         │                                      │         │
-│         └──────────────────────────────────────┘         │
+│  ┌──────────────┐    ┌──────────────┐                    │
+│  │ minio-server │◄───│  minio-init  │                    │
+│  │              │    │  (one-shot)  │                    │
+│  │  S3 API      │    │              │                    │
+│  │  :9000       │    │  Applies     │                    │
+│  │              │    │  JSON config │                    │
+│  │  Console     │    │  on start    │                    │
+│  │  :9001       │    └──────────────┘                    │
+│  └──────────────┘                                        │
+│         │                                                │
+│         │  With admin console override:                   │
+│         │  ┌────────────┐                                │
+│         │  │   admin-   │  Replaces built-in console     │
+│         └──│  console   │  on same port / hostname       │
+│            │  :9090     │                                │
+│            └────────────┘                                │
 │                     Internal Network                     │
 └──────────────────────────────────────────────────────────┘
 ```
@@ -77,13 +82,19 @@ Production-ready [MinIO](https://min.io/) S3-compatible object storage deploymen
 
 ### With Admin Console
 
-Append `--profile admin-console` to any deployment mode:
+Append the admin console override file to any deployment mode:
 
 ```bash
-docker compose -f docker-compose-single.yml --profile admin-console up -d
+# Single mode with admin console
+docker compose -f docker-compose-single.yml -f docker-compose-admin-console.yml up -d
+
+# Traefik mode with admin console
+docker compose -f docker-compose-single-traefik.yml -f docker-compose-admin-console.yml up -d
 ```
 
-> **Note:** MinIO removed its built-in admin UI in [RELEASE.2025-05-24T17-08-30Z](https://github.com/minio/minio/releases/tag/RELEASE.2025-05-24T17-08-30Z). The built-in console is now an object browser only. The optional admin console service provides full management capabilities (users, policies, buckets, monitoring).
+The admin console **replaces** the built-in console on the same endpoint (`EXPOSED_CONSOLE_PORT` in single mode, `S3_CONSOLE_HOSTNAME` in Traefik mode). You always have either the built-in object browser or the full admin console, never both.
+
+> **Note:** MinIO removed its built-in admin UI in [RELEASE.2025-05-24T17-08-30Z](https://github.com/minio/minio/releases/tag/RELEASE.2025-05-24T17-08-30Z). The built-in console is now an object browser only. The admin console override provides full management capabilities (users, policies, buckets, monitoring).
 
 ## Configuration
 
@@ -125,7 +136,7 @@ The init container reads `config/minio-init.json` and applies the configuration 
   "buckets": [
     {
       "name": "documents",
-      "region": "us-east-1",
+      "region": "eu-central-1",
       "versioning": true,
       "policy": "private"
     }
@@ -162,7 +173,7 @@ This repository builds two Docker images:
 | Image | Base | Purpose |
 |-------|------|---------|
 | `ghcr.io/bauer-group/cs-minio/minio` | `quay.io/minio/minio` | MinIO server with health check and OCI labels |
-| `ghcr.io/bauer-group/cs-minio/minio-init` | `python:3.13-alpine` | Init container with mc client and task framework |
+| `ghcr.io/bauer-group/cs-minio/minio-init` | `python:3.14-alpine` | Init container with mc client and task framework |
 
 The server image currently uses the base image as-is. The Dockerfile provides a customization section for adding certificates, scripts, or configurations as needed.
 
@@ -172,8 +183,7 @@ The Traefik deployment mode provides:
 
 - **Automatic HTTPS** via Let's Encrypt certificate resolver
 - **S3 API endpoint** on `${S3_HOSTNAME}` (path-style access)
-- **Console endpoint** on `${S3_CONSOLE_HOSTNAME}`
-- **Admin console endpoint** on `${ADMIN_CONSOLE_HOSTNAME}` (when enabled)
+- **Console endpoint** on `${S3_CONSOLE_HOSTNAME}` (object browser or admin console)
 - **No-buffering middleware** for large S3 uploads
 - **HTTP to HTTPS redirect** on all endpoints
 
@@ -221,6 +231,7 @@ Virtual-host-style bucket access (e.g., `bucket.s3.example.com`) is prepared but
 │   └── minio-init.json             # Init container configuration (user-facing)
 ├── docker-compose-single.yml       # Single server, direct port access
 ├── docker-compose-single-traefik.yml  # Single server, Traefik HTTPS
+├── docker-compose-admin-console.yml   # Admin console override (append to any mode)
 ├── .env.example                    # Environment configuration template
 ├── CHANGELOG.md                    # Release history (auto-generated)
 ├── LICENSE                         # MIT License
@@ -248,7 +259,7 @@ The repository uses [semantic-release](https://github.com/semantic-release/seman
 ## Requirements
 
 - Docker Engine 24.0+
-- Docker Compose v2.20+
+- Docker Compose v2.24+ (required for `!override` tag in admin console override)
 - 512 MB RAM minimum (1 GB+ recommended)
 - For Traefik mode: Traefik v2/v3 reverse proxy on the `${PROXY_NETWORK}` network
 

@@ -31,7 +31,7 @@ def get_minio_config() -> dict:
     """Get MinIO connection configuration from environment variables."""
     return {
         "endpoint": os.environ.get("MINIO_ENDPOINT", "http://minio-server:9000"),
-        "root_user": os.environ.get("MINIO_ROOT_USER", "admin"),
+        "root_user": os.environ.get("MINIO_ROOT_USER", "minioadmin"),
         "root_password": os.environ.get("MINIO_ROOT_PASSWORD", ""),
     }
 

@@ -6,16 +6,14 @@
 # Features:
 #   - Single MinIO server with direct port binding
 #   - Init container for declarative bucket/user setup
-#   - Optional admin console (--profile admin-console)
-#   - IPv4 and IPv6 support
+#   - IPv6 support
 #
 # Access:
 #   - S3 API:  http://localhost:${EXPOSED_API_PORT}
 #   - Console: http://localhost:${EXPOSED_CONSOLE_PORT}
 #
-# With Admin Console:
-#   docker compose -f docker-compose-single.yml --profile admin-console up -d
-#   - Admin UI: http://localhost:${ADMIN_CONSOLE_PORT}
+# Admin Console (replaces built-in object browser):
+#   docker compose -f docker-compose-single.yml -f docker-compose-admin-console.yml up -d
 # =============================================================================
 
 
@@ -33,7 +31,7 @@ x-minio-common: &minio-common
     - TZ=${TIME_ZONE:-Etc/UTC}
     - MINIO_ROOT_USER=${MINIO_ROOT_USER:-admin}
     - MINIO_ROOT_PASSWORD=${MINIO_ROOT_PASSWORD}
-    - MINIO_REGION_NAME=${MINIO_REGION:-us-east-1}
+    - MINIO_REGION_NAME=${MINIO_REGION:-eu-central-1}
     - MINIO_BROWSER_REDIRECT=false
   healthcheck:
     test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
@@ -93,34 +91,6 @@ services:
     networks:
       local:
 
-### Optional Services ###
-
-  # Admin Console (enable with: --profile admin-console)
-  # Required since MinIO removed built-in admin UI in RELEASE.2025-05-24
-  minio-admin-console:
-    image: ghcr.io/karlspace/minio-ui/minio-admin-console:latest
-    container_name: ${STACK_NAME:-s3-app}_ADMIN_CONSOLE
-    profiles: ["admin-console"]
-    restart: unless-stopped
-    logging:
-      driver: json-file
-      options:
-        max-size: "50m"
-        max-file: "3"
-    environment:
-      - TZ=${TIME_ZONE:-Etc/UTC}
-      - CONSOLE_MINIO_SERVER=http://minio-server:9000
-      - CONSOLE_MINIO_REGION=${MINIO_REGION:-us-east-1}
-    ports:
-      - "${ADMIN_CONSOLE_PORT:-9002}:9090"
-    depends_on:
-      minio-server:
-        condition: service_healthy
-      minio-init:
-        condition: service_completed_successfully
-    networks:
-      local:
-
 
 ### Volumes ###
 volumes:
@@ -135,9 +105,3 @@ networks:
     driver: bridge
     name: ${STACK_NAME:-s3-app}
     enable_ipv6: true
-    ipam:
-      config:
-        - subnet: 10.25.${PRIVATESUBNET:-254}.0/24
-          gateway: 10.25.${PRIVATESUBNET:-254}.1
-        - subnet: fdfd:10:25:${PRIVATESUBNET:-254}::/64
-          gateway: fdfd:10:25:${PRIVATESUBNET:-254}::1
