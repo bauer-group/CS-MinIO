@@ -5,15 +5,21 @@
 #
 # Features:
 #   - Single MinIO server with direct port binding
+#   - Admin console with full management UI (default)
 #   - Init container for declarative bucket/user setup
 #   - IPv6 support
+#
+# Console Switching:
+#   By default, the admin console (full management) is active.
+#   To switch to the built-in console (object browser only):
+#     1. Comment out MINIO_BROWSER=off in the environment section
+#     2. Uncomment MINIO_BROWSER_REDIRECT=false
+#     3. Uncomment the console port on minio-server
+#     4. Comment out the entire admin-console service
 #
 # Access:
 #   - S3 API:  http://localhost:${EXPOSED_API_PORT}
 #   - Console: http://localhost:${EXPOSED_CONSOLE_PORT}
-#
-# Admin Console (replaces built-in object browser):
-#   docker compose -f docker-compose-single.yml -f docker-compose-admin-console.yml up -d
 # =============================================================================
 
 
@@ -32,7 +38,11 @@ x-minio-common: &minio-common
     - MINIO_ROOT_USER=${MINIO_ROOT_USER:-admin}
     - MINIO_ROOT_PASSWORD=${MINIO_ROOT_PASSWORD}
     - MINIO_REGION_NAME=${MINIO_REGION:-eu-central-1}
-    - MINIO_BROWSER_REDIRECT=false
+    # ── Console Mode ──────────────────────────────────────────────────
+    # Admin console (default): disable built-in console
+    - MINIO_BROWSER=off
+    # Built-in console (object browser only): uncomment below, comment out MINIO_BROWSER=off
+    # - MINIO_BROWSER_REDIRECT=false
   healthcheck:
     test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
     interval: 30s
@@ -58,7 +68,39 @@ services:
       - minio-data:/data
     ports:
       - "${EXPOSED_API_PORT:-9000}:9000"
-      - "${EXPOSED_CONSOLE_PORT:-9001}:9001"
+      # ── Built-in Console (uncomment when switching to built-in mode) ──
+      # - "${EXPOSED_CONSOLE_PORT:-9001}:9001"
+
+
+### Admin Console ###
+  # Full management UI (default).
+  # To use built-in console instead: comment out this entire service.
+
+  admin-console:
+    image: ghcr.io/karlspace/minio-ui/minio-admin-console:latest
+    container_name: ${STACK_NAME:-s3-app}_CONSOLE
+    hostname: admin-console
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "3"
+    environment:
+      - TZ=${TIME_ZONE:-Etc/UTC}
+      - MINIO_ENDPOINT=http://minio-server:9000
+      - MINIO_ACCESS_KEY=${CONSOLE_USER:-console-admin}
+      - MINIO_SECRET_KEY=${CONSOLE_PASSWORD}
+    expose:
+      - 9090/tcp
+    ports:
+      - "${EXPOSED_CONSOLE_PORT:-9001}:9090"
+    depends_on:
+      minio-server:
+        condition: service_healthy
+    networks:
+      local:
+
 
 ### Initialization ###
 

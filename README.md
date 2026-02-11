@@ -1,12 +1,12 @@
 # MinIO Object Storage
 
-Production-ready [MinIO](https://min.io/) S3-compatible object storage deployment with declarative JSON-based initialization, optional admin console, and full CI/CD automation.
+Production-ready [MinIO](https://min.io/) S3-compatible object storage deployment with declarative JSON-based initialization, admin console, and full CI/CD automation.
 
 ## Features
 
 - **S3-Compatible API** - Full Amazon S3 API compatibility via MinIO
 - **Declarative Init Container** - JSON-based provisioning of buckets, policies, groups, users, and service accounts
-- **Admin Console** - Optional third-party admin UI (replaces MinIO's removed built-in admin UI)
+- **Admin Console** - Full management UI (default), switchable to built-in object browser
 - **Multiple Deployment Modes** - Direct port access or Traefik reverse proxy with automatic HTTPS
 - **DNS-Style Bucket Access** - Prepared virtual-host-style routing (e.g., `bucket.s3.example.com`)
 - **CI/CD Automation** - Semantic releases, Docker image builds, base image monitoring, auto-merge
@@ -27,7 +27,7 @@ Production-ready [MinIO](https://min.io/) S3-compatible object storage deploymen
 3. **Edit `.env`** - Set at minimum:
    - `MINIO_ROOT_PASSWORD` - Admin password
    - `APP_SERVICE_SECRET_KEY` - Application service account secret
-   - `CONSOLE_PASSWORD` - Console user password (if using admin console)
+   - `CONSOLE_PASSWORD` - Console user password
 
 4. **Edit `config/minio-init.json`** - Configure buckets, policies, users as needed
 
@@ -53,22 +53,17 @@ Production-ready [MinIO](https://min.io/) S3-compatible object storage deploymen
 ┌──────────────────────────────────────────────────────────┐
 │                    Docker Compose Stack                   │
 │                                                          │
-│  ┌──────────────┐    ┌──────────────┐                    │
-│  │ minio-server │◄───│  minio-init  │                    │
-│  │              │    │  (one-shot)  │                    │
-│  │  S3 API      │    │              │                    │
-│  │  :9000       │    │  Applies     │                    │
-│  │              │    │  JSON config │                    │
-│  │  Console     │    │  on start    │                    │
-│  │  :9001       │    └──────────────┘                    │
-│  └──────────────┘                                        │
-│         │                                                │
-│         │  With admin console override:                   │
-│         │  ┌────────────┐                                │
-│         │  │   admin-   │  Replaces built-in console     │
-│         └──│  console   │  on same port / hostname       │
-│            │  :9090     │                                │
-│            └────────────┘                                │
+│  ┌──────────────┐    ┌──────────────┐    ┌────────────┐  │
+│  │ minio-server │◄───│  minio-init  │    │   admin-   │  │
+│  │              │    │  (one-shot)  │    │  console   │  │
+│  │  S3 API      │    │              │    │ (default)  │  │
+│  │  :9000       │    │  Applies     │    │  :9090     │  │
+│  │              │    │  JSON config │    │            │  │
+│  │  Console     │    │  on start    │    │  Full      │  │
+│  │  :9001       │    └──────────────┘    │  admin UI  │  │
+│  └──────────────┘                        └────────────┘  │
+│         │                                      │         │
+│         └──────────────────────────────────────┘         │
 │                     Internal Network                     │
 └──────────────────────────────────────────────────────────┘
 ```
@@ -80,21 +75,11 @@ Production-ready [MinIO](https://min.io/) S3-compatible object storage deploymen
 | **Single** | `docker-compose-single.yml` | Direct port binding, no reverse proxy needed |
 | **Single + Traefik** | `docker-compose-single-traefik.yml` | HTTPS via Traefik with Let's Encrypt certificates |
 
-### With Admin Console
+### Console Switching
 
-Append the admin console override file to any deployment mode:
+By default, both compose files run the **admin console** (full management UI). To switch to the **built-in console** (object browser only), follow the "Console Switching" instructions in each compose file header. The switch is done by commenting/uncommenting a few lines - no override files needed.
 
-```bash
-# Single mode with admin console
-docker compose -f docker-compose-single.yml -f docker-compose-admin-console.yml up -d
-
-# Traefik mode with admin console
-docker compose -f docker-compose-single-traefik.yml -f docker-compose-admin-console.yml up -d
-```
-
-The admin console **replaces** the built-in console on the same endpoint (`EXPOSED_CONSOLE_PORT` in single mode, `S3_CONSOLE_HOSTNAME` in Traefik mode). You always have either the built-in object browser or the full admin console, never both.
-
-> **Note:** MinIO removed its built-in admin UI in [RELEASE.2025-05-24T17-08-30Z](https://github.com/minio/minio/releases/tag/RELEASE.2025-05-24T17-08-30Z). The built-in console is now an object browser only. The admin console override provides full management capabilities (users, policies, buckets, monitoring).
+> **Note:** MinIO removed its built-in admin UI in [RELEASE.2025-05-24T17-08-30Z](https://github.com/minio/minio/releases/tag/RELEASE.2025-05-24T17-08-30Z). The built-in console is now an object browser only. The admin console provides full management capabilities (users, policies, buckets, monitoring).
 
 ## Configuration
 
@@ -108,6 +93,7 @@ All configuration is done via `.env`. See [.env.example](.env.example) for the f
 |----------|-------------|
 | `MINIO_ROOT_PASSWORD` | MinIO admin password |
 | `APP_SERVICE_SECRET_KEY` | Application service account secret |
+| `CONSOLE_PASSWORD` | Console user password |
 
 **Generate secrets:**
 ```bash
@@ -183,9 +169,10 @@ The Traefik deployment mode provides:
 
 - **Automatic HTTPS** via Let's Encrypt certificate resolver
 - **S3 API endpoint** on `${S3_HOSTNAME}` (path-style access)
-- **Console endpoint** on `${S3_CONSOLE_HOSTNAME}` (object browser or admin console)
+- **Console endpoint** on `${S3_CONSOLE_HOSTNAME}` (admin console or object browser)
 - **No-buffering middleware** for large S3 uploads
 - **HTTP to HTTPS redirect** on all endpoints
+- **Traefik v2 and v3 compatible**
 
 ### DNS-Style Bucket Access
 
@@ -231,7 +218,6 @@ Virtual-host-style bucket access (e.g., `bucket.s3.example.com`) is prepared but
 │   └── minio-init.json             # Init container configuration (user-facing)
 ├── docker-compose-single.yml       # Single server, direct port access
 ├── docker-compose-single-traefik.yml  # Single server, Traefik HTTPS
-├── docker-compose-admin-console.yml   # Admin console override (append to any mode)
 ├── .env.example                    # Environment configuration template
 ├── CHANGELOG.md                    # Release history (auto-generated)
 ├── LICENSE                         # MIT License
@@ -259,7 +245,7 @@ The repository uses [semantic-release](https://github.com/semantic-release/seman
 ## Requirements
 
 - Docker Engine 24.0+
-- Docker Compose v2.24+ (required for `!override` tag in admin console override)
+- Docker Compose v2.20+
 - 512 MB RAM minimum (1 GB+ recommended)
 - For Traefik mode: Traefik v2/v3 reverse proxy on the `${PROXY_NETWORK}` network
 
