@@ -4,14 +4,14 @@
     {
       "name": "minio",
       "image": "quay.io/minio/minio",
-      "tag": "RELEASE.2025-10-15T17-29-55Z",
+      "tag": "latest",
       "variable": "MINIO_RELEASE_DIGEST",
       "description": "MinIO S3-compatible object storage server"
     },
     {
       "name": "python-alpine",
       "image": "python",
-      "tag": "3.13-alpine",
+      "tag": "3.14-alpine",
       "variable": "PYTHON_ALPINE_DIGEST",
       "description": "Python Alpine base image for minio-init"
     }

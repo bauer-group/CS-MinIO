@@ -14,7 +14,7 @@
 # Documentation: https://github.com/bauer-group/CS-MinIO
 # ===============================================================================
 
-FROM python:3.13-alpine
+FROM python:3.14-alpine
 
 # ---------------------------------------------------------------------------
 # Metadata Labels (Legacy)
