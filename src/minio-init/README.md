@@ -18,7 +18,7 @@ Both configs are processed independently through all tasks. Idempotency ensures 
 - **Buckets**: Create with versioning, object-lock/WORM, quotas, retention, anonymous access
 - **IAM Policies**: Create or update custom S3 policy documents
 - **Users**: Create users with group membership and direct policies
-- **Groups**: Attach policies to groups (groups are created implicitly when users are added)
+- **Groups**: Attach policies to groups (groups are created implicitly when policies are attached)
 - **Service Accounts**: Dynamic server-generated credentials, output as JSON files
 - **Environment Variable Resolution**: `${VAR_NAME}` syntax in JSON values
 - **Task Discovery**: Pluggable task system via numbered Python files
@@ -133,8 +133,8 @@ Credentials are generated dynamically by MinIO and written to `/data/credentials
 | Variable                | Default                    | Description                         |
 |-------------------------|----------------------------|-------------------------------------|
 | `MINIO_ENDPOINT`        | `http://minio-server:9000` | MinIO server URL                    |
-| `MINIO_ROOT_USER`       | `admin`                    | MinIO root username                 |
-| `MINIO_ROOT_PASSWORD`   | *(required)*               | MinIO root password                 |
+| `MINIO_ROOT_USER`       | `minioadmin`               | MinIO root username                 |
+| `MINIO_ROOT_PASSWORD`   | `minioadmin`               | MinIO root password                 |
 | `MINIO_INIT_CONFIG`     | `/app/config/init.json`    | Path to user JSON config file       |
 | `MINIO_WAIT_TIMEOUT`    | `60`                       | Seconds to wait for MinIO server    |
 | `MINIO_CREDENTIALS_DIR` | `/data/credentials`        | Output directory for SA credentials |
@@ -146,7 +146,7 @@ Credentials are generated dynamically by MinIO and written to `/data/credentials
    - `TASK_NAME`: Display name
    - `TASK_DESCRIPTION`: Brief description
    - `CONFIG_KEY`: Key in the JSON config to read
-3. Implement `run(items: list, console) -> dict`
+3. Implement `run(items: list, console, **kwargs) -> dict`
 4. Return `{"changed": bool, "skipped": bool, "message": str}`
 
 ## License

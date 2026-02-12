@@ -32,7 +32,6 @@ Notes:
     (no-op if unchanged) rather than skipped.
 """
 
-import json
 import subprocess
 
 TASK_NAME = "Buckets"
@@ -48,17 +47,6 @@ def _mc(args: list) -> subprocess.CompletedProcess:
         capture_output=True,
         text=True,
     )
-
-
-def _mc_json(args: list) -> dict | None:
-    """Run mc command and parse JSON output."""
-    result = _mc(args)
-    if result.returncode == 0 and result.stdout.strip():
-        try:
-            return json.loads(result.stdout.strip().splitlines()[-1])
-        except (json.JSONDecodeError, IndexError):
-            pass
-    return None
 
 
 def _bucket_exists(name: str) -> bool:
@@ -103,8 +91,6 @@ def run(items: list, console, **kwargs) -> dict:
             console.print(f"    [dim]Bucket exists: {name}[/]")
             # Warn if object-lock was requested but bucket already exists without it
             if want_object_lock:
-                info = _mc_json(["stat", target])
-                # mc stat doesn't reliably report object-lock, so we warn generically
                 console.print(
                     f"    [yellow]Warning: object_lock requested but bucket already exists. "
                     f"Object-lock can only be enabled at creation time.[/]"
