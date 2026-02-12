@@ -190,8 +190,8 @@ services:
     environment:
       - TZ=${TIME_ZONE:-Etc/UTC}
       - MINIO_ENDPOINT=http://minio-server:9000
-      - MINIO_ROOT_USER=${MINIO_ROOT_USER:-admin}
-      - MINIO_ROOT_PASSWORD=${MINIO_ROOT_PASSWORD}
+      - MINIO_ROOT_USER=${MINIO_ROOT_USER:-minioadmin}
+      - MINIO_ROOT_PASSWORD=${MINIO_ROOT_PASSWORD:-minioadmin}
       - MINIO_WAIT_TIMEOUT=${MINIO_WAIT_TIMEOUT:-60}
       # Pass through environment variables used in config JSON files
       - CONSOLE_USER=${CONSOLE_USER:-console-admin}

@@ -56,26 +56,6 @@ def _mc(args: list) -> subprocess.CompletedProcess:
     )
 
 
-def _list_svcaccts(user: str) -> list[str]:
-    """List existing service account access keys for a user."""
-    result = _mc(["admin", "user", "svcacct", "list", MC_ALIAS, user])
-    if result.returncode != 0:
-        return []
-
-    names = []
-    for line in result.stdout.strip().splitlines():
-        try:
-            data = json.loads(line)
-            # mc outputs a JSON line per service account
-            if "accessKey" in data:
-                names.append(data["accessKey"])
-            elif "name" in data:
-                names.append(data["name"])
-        except json.JSONDecodeError:
-            continue
-    return names
-
-
 def _find_existing_sa(user: str, sa_name: str) -> str | None:
     """Check if a service account with a given name exists for a user.
 
@@ -113,6 +93,31 @@ def _write_credentials(sa_name: str, credentials: dict) -> str:
     return str(creds_file)
 
 
+def _create_sa(cmd: list, sa_policy: str | None) -> subprocess.CompletedProcess:
+    """Create a service account, optionally with a scoped policy.
+
+    Handles temp file creation and cleanup for the policy document.
+    """
+    policy_path = None
+
+    try:
+        if sa_policy and isinstance(sa_policy, str):
+            # Fetch the named policy document from MinIO
+            policy_result = _mc(["admin", "policy", "info", MC_ALIAS, sa_policy])
+            if policy_result.returncode == 0:
+                with tempfile.NamedTemporaryFile(
+                    mode="w", suffix=".json", delete=False, prefix="sa-policy-"
+                ) as f:
+                    f.write(policy_result.stdout)
+                    policy_path = f.name
+                cmd.extend(["--policy", policy_path])
+
+        return _mc(cmd)
+    finally:
+        if policy_path:
+            os.unlink(policy_path)
+
+
 def run(items: list, console, **kwargs) -> dict:
     if not items:
         return {"skipped": True, "message": "No service accounts configured"}
@@ -140,20 +145,8 @@ def run(items: list, console, **kwargs) -> dict:
         if sa_description:
             cmd.extend(["--description", sa_description])
 
-        # Attach a scoped policy if specified
-        if sa_policy:
-            # Build a policy file reference - check if it's a policy name or inline
-            if isinstance(sa_policy, str):
-                # It's a named policy - fetch it and use as policy file
-                policy_result = _mc(["admin", "policy", "info", MC_ALIAS, sa_policy])
-                if policy_result.returncode == 0:
-                    with tempfile.NamedTemporaryFile(
-                        mode="w", suffix=".json", delete=False, prefix=f"sa-policy-"
-                    ) as f:
-                        f.write(policy_result.stdout)
-                        cmd.extend(["--policy", f.name])
-
-        result = _mc(cmd)
+        # Create the service account (with temp file cleanup for policy)
+        result = _create_sa(cmd, sa_policy)
 
         if result.returncode == 0:
             created += 1

@@ -8,7 +8,7 @@
 #   - Custom IAM policy management
 #   - Group creation with policy attachment
 #   - User creation with group membership
-#   - Service account provisioning (explicit access key / secret key)
+#   - Service account provisioning (dynamic credentials)
 #   - Idempotent - safe to run on every start
 #
 # Documentation: https://github.com/bauer-group/CS-MinIO
