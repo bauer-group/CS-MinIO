@@ -1,12 +1,17 @@
 # =============================================================================
-# MinIO - Single Server Mode (Direct Port Access)
+# MinIO - Development Mode (Local Builds)
 # =============================================================================
-# Usage: docker compose -f docker-compose-single.yml up -d
+# Usage: docker compose -f docker-compose-development.yml up -d --build
+#
+# Builds images locally from src/ instead of pulling from GHCR.
+# Use this for developing and testing changes to the MinIO server
+# image or the init container before pushing to the registry.
 #
 # Features:
-#   - Single MinIO server with direct port binding
+#   - Local builds from src/minio and src/minio-init
+#   - Configurable base image versions via build args
 #   - Admin console with full management UI
-#   - Init container for declarative bucket/user setup
+#   - Full init container config (buckets, policies, groups, users, service accounts)
 #   - IPv6 support
 #
 # Access:
@@ -17,7 +22,11 @@
 
 ### Service Templates ###
 x-minio-common: &minio-common
-  image: ${MINIO_IMAGE:-ghcr.io/bauer-group/cs-minio/minio}:${MINIO_VERSION:-stable}
+  build:
+    context: ./src/minio
+    args:
+      - BASE_MINIO_IMAGE=${BASE_MINIO_IMAGE:-quay.io/minio/minio}
+      - BASE_MINIO_VERSION=${BASE_MINIO_VERSION:-RELEASE.2025-10-15T17-29-55Z}
   restart: unless-stopped
   logging:
     driver: json-file
@@ -95,7 +104,11 @@ services:
 
   # MinIO Init Container (runs on every start, idempotent)
   minio-init:
-    image: ${MINIO_INIT_IMAGE:-ghcr.io/bauer-group/cs-minio/minio-init}:${MINIO_INIT_VERSION:-stable}
+    build:
+      context: ./src/minio-init
+      args:
+        - MC_IMAGE=${MC_IMAGE:-quay.io/minio/mc}
+        - MC_VERSION=${MC_VERSION:-latest}
     container_name: ${STACK_NAME:-s3-app}_INIT
     restart: "no"
     logging:
@@ -112,9 +125,12 @@ services:
       # Pass through environment variables used in config JSON files
       - CONSOLE_USER=${CONSOLE_USER:-console-admin}
       - CONSOLE_PASSWORD=${CONSOLE_PASSWORD:-console-admin}
+      - APP_USER=${APP_USER:-app-service}
+      - APP_PASSWORD=${APP_PASSWORD:-app-service}
+      - BACKUP_USER=${BACKUP_USER:-backup-agent}
+      - BACKUP_PASSWORD=${BACKUP_PASSWORD:-backup-agent}
     volumes:
-      # Optional: mount custom initialization config (see config/minio-init.example.json)
-      # - ${MINIO_INIT_CONFIG:-./config/minio-init.json}:/app/config/init.json:ro
+      - ${MINIO_INIT_CONFIG:-./config/minio-init.example.json}:/app/config/init.json:ro
       - minio-credentials:/data/credentials
     depends_on:
       minio-server:

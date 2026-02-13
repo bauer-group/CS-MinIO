@@ -36,7 +36,7 @@ jobs:
     name: "\U0001F50D Validate Docker Compose"
     uses: bauer-group/automation-templates/.github/workflows/modules-validate-compose.yml@main
     with:
-      compose-files: '["docker-compose-single.yml", "docker-compose-single-traefik.yml"]'
+      compose-files: '["docker-compose-single.yml", "docker-compose-single-traefik.yml", "docker-compose-development.yml"]'
       env-file: '.env.example'
 
   # ============================================

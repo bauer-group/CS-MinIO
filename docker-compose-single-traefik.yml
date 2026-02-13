@@ -199,9 +199,10 @@ services:
       - MINIO_WAIT_TIMEOUT=${MINIO_WAIT_TIMEOUT:-60}
       # Pass through environment variables used in config JSON files
       - CONSOLE_USER=${CONSOLE_USER:-console-admin}
-      - CONSOLE_PASSWORD=${CONSOLE_PASSWORD:-}
+      - CONSOLE_PASSWORD=${CONSOLE_PASSWORD:-console-admin}
     volumes:
-      - ${MINIO_INIT_CONFIG:-./config/minio-init.json}:/app/config/init.json:ro
+      # Optional: mount custom initialization config (see config/minio-init.example.json)
+      # - ${MINIO_INIT_CONFIG:-./config/minio-init.json}:/app/config/init.json:ro
       - minio-credentials:/data/credentials
     depends_on:
       minio-server:
