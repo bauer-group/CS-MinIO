@@ -8,7 +8,15 @@ All three components (MinIO server, init container, admin console) are built fro
 
 - **S3-Compatible API** - Full Amazon S3 API compatibility via MinIO
 - **Built from Source** - All components compiled from private forks (security patches, custom features)
-- **Declarative Init Container** - JSON-based provisioning of buckets, policies, groups, users, and service accounts
+- **Declarative Init Container** - Fully automatic infrastructure provisioning from a single JSON file:
+  - **Buckets** with versioning, object-lock/WORM, hard quotas, retention policies, and anonymous access control
+  - **IAM Policies** as fine-grained S3 policy documents (create or update)
+  - **Groups & Users** with automatic group membership and direct policy attachment
+  - **Service Accounts** with dynamic server-generated credentials, written as JSON files to a shared volume for consumption by other containers
+  - **Environment Variable Resolution** - `${VAR_NAME}` syntax in JSON values keeps secrets out of config files
+  - **Fully Idempotent** - Runs on every container start; safely skips already-existing resources
+  - **Two-Layer Config** - Built-in defaults (admin policy, group, console user) + user-provided config, both processed independently
+  - **Pluggable Task System** - Add new provisioning tasks by dropping numbered Python files into `tasks/`
 - **Admin Console** - Full management UI with complete admin functionality, built from a private fork ([karlspace/MinIO-UI](https://github.com/karlspace/MinIO-UI)) with current security patches. Restores the admin capabilities that MinIO removed from its open-source release.
 - **Multiple Deployment Modes** - Direct port access, Traefik reverse proxy with HTTPS, or development mode with local builds
 - **DNS-Style Bucket Access** - Prepared virtual-host-style routing (e.g., `bucket.s3.example.com`)
