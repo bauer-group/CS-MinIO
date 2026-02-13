@@ -8,7 +8,7 @@ The `mc` client is built from source ([karlspace/MinIO-CLI](https://github.com/k
 
 The init container processes two configuration files in order:
 
-1. **Built-in default** (`/app/config/default.json`, baked into image) - Always processed first. Creates the `pAdministrators` policy, `gAdministrators` group, and a console user from `CONSOLE_USER`/`CONSOLE_PASSWORD` environment variables.
+1. **Built-in default** (`/app/config/default.json`, baked into image) - Always processed first. Creates the `pAdministrators` policy, `gAdministrators` group, and a console user with full admin rights from `CONSOLE_USER`/`CONSOLE_PASSWORD` environment variables.
 2. **User config** (optional) - Loaded from:
    - `MINIO_INIT_CONFIG` environment variable (if set and file exists)
    - `/app/config/init.json` (fallback, if mounted)

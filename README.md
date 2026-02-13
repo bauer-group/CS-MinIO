@@ -9,7 +9,7 @@ All three components (MinIO server, init container, admin console) are built fro
 - **S3-Compatible API** - Full Amazon S3 API compatibility via MinIO
 - **Built from Source** - All components compiled from private forks (security patches, custom features)
 - **Declarative Init Container** - JSON-based provisioning of buckets, policies, groups, users, and service accounts
-- **Admin Console** - Full management UI for users, policies, buckets, and monitoring (replaces removed built-in browser)
+- **Admin Console** - Full management UI with complete admin functionality, built from a private fork ([karlspace/MinIO-UI](https://github.com/karlspace/MinIO-UI)) with current security patches. Restores the admin capabilities that MinIO removed from its open-source release.
 - **Multiple Deployment Modes** - Direct port access, Traefik reverse proxy with HTTPS, or development mode with local builds
 - **DNS-Style Bucket Access** - Prepared virtual-host-style routing (e.g., `bucket.s3.example.com`)
 - **CI/CD Automation** - Semantic releases, Docker image builds, base image monitoring, auto-merge
@@ -83,7 +83,7 @@ All three components (MinIO server, init container, admin console) are built fro
 | **Single + Traefik** | `docker-compose-single-traefik.yml` | HTTPS via Traefik with Let's Encrypt certificates |
 | **Development** | `docker-compose-development.yml` | Local builds from `src/`, for development and testing |
 
-> **Note:** MinIO removed its built-in admin UI in [RELEASE.2025-05-24T17-08-30Z](https://github.com/minio/minio/releases/tag/RELEASE.2025-05-24T17-08-30Z). The admin console provides full management capabilities as a replacement. See [docs/aistor-migration.md](docs/aistor-migration.md) for details on MinIO's commercial successor.
+> **Note:** MinIO removed its built-in admin UI in [RELEASE.2025-05-24T17-08-30Z](https://github.com/minio/minio/releases/tag/RELEASE.2025-05-24T17-08-30Z) and moved admin features to their commercial AIStor product. This deployment restores full admin functionality through a custom console image built from a private fork with current security patches. See [docs/aistor-migration.md](docs/aistor-migration.md) for details on MinIO's commercial successor.
 
 ## Configuration
 
@@ -107,7 +107,7 @@ openssl rand -base64 24
 
 The init container processes two configuration files in order:
 
-1. **Built-in default** (baked into image) - Creates `pAdministrators` policy, `gAdministrators` group, and console user from `CONSOLE_USER`/`CONSOLE_PASSWORD` environment variables
+1. **Built-in default** (baked into image) - Creates `pAdministrators` policy, `gAdministrators` group, and console user with full admin rights from `CONSOLE_USER`/`CONSOLE_PASSWORD` environment variables
 2. **User config** (mounted) - Your custom buckets, policies, users, service accounts
 
 All operations are idempotent. The init container runs on every start.
