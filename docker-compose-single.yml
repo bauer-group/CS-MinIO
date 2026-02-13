@@ -32,6 +32,10 @@ x-minio-common: &minio-common
     - MINIO_REGION_NAME=${MINIO_REGION:-eu-central-1}
     # Disable built-in browser (admin console provides full management UI)
     - MINIO_BROWSER=off
+    # ── Prometheus Monitoring (optional) ────────────────────────────
+    # Metrics endpoints: /minio/v2/metrics/cluster, /minio/v2/metrics/node
+    # Uncomment to allow unauthenticated scraping (default: jwt):
+    # - MINIO_PROMETHEUS_AUTH_TYPE=public
   healthcheck:
     test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
     interval: 30s
