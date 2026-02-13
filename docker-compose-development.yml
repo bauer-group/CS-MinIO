@@ -75,7 +75,11 @@ services:
 ### Admin Console ###
 
   admin-console:
-    image: ghcr.io/karlspace/minio-ui/minio-admin-console:latest
+    build:
+      context: ./src/minio-console
+      args:
+        - BASE_CONSOLE_REPO=${BASE_CONSOLE_REPO:-https://github.com/karlspace/MinIO-UI.git}
+        - BASE_CONSOLE_VERSION=${BASE_CONSOLE_VERSION:-feature/admin-console-v2}
     container_name: ${STACK_NAME:-s3-app}_CONSOLE
     hostname: admin-console
     restart: unless-stopped
