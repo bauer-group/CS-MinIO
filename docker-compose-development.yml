@@ -25,7 +25,7 @@ x-minio-common: &minio-common
   build:
     context: ./src/minio
     args:
-      - BASE_MINIO_IMAGE=${BASE_MINIO_IMAGE:-quay.io/minio/minio}
+      - BASE_MINIO_REPO=${BASE_MINIO_REPO:-https://github.com/karlspace/MinIO.git}
       - BASE_MINIO_VERSION=${BASE_MINIO_VERSION:-RELEASE.2025-10-15T17-29-55Z}
   restart: unless-stopped
   logging:
@@ -107,7 +107,7 @@ services:
     build:
       context: ./src/minio-init
       args:
-        - BASE_MC_IMAGE=${BASE_MC_IMAGE:-quay.io/minio/mc}
+        - BASE_MC_REPO=${BASE_MC_REPO:-https://github.com/karlspace/MinIO-CLI.git}
         - BASE_MC_VERSION=${BASE_MC_VERSION:-latest}
     container_name: ${STACK_NAME:-s3-app}_INIT
     restart: "no"

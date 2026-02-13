@@ -15,13 +15,34 @@
 # ===============================================================================
 
 # ---------------------------------------------------------------------------
-# Extract mc client from official Docker image (safer than direct download,
-# as MinIO may discontinue the CDN at any time)
+# Build Arguments
 # ---------------------------------------------------------------------------
-ARG BASE_MC_IMAGE=quay.io/minio/mc
+ARG BASE_GO_IMAGE=golang
+ARG BASE_GO_VERSION=1.26-alpine
+ARG BASE_MC_REPO=https://github.com/karlspace/MinIO-CLI.git
 ARG BASE_MC_VERSION=latest
-FROM ${BASE_MC_IMAGE}:${BASE_MC_VERSION} AS mc-source
 
+# ---------------------------------------------------------------------------
+# Stage 1: Build mc client from source
+# ---------------------------------------------------------------------------
+FROM ${BASE_GO_IMAGE}:${BASE_GO_VERSION} AS mc-builder
+
+ARG BASE_MC_REPO
+ARG BASE_MC_VERSION
+
+RUN apk add --no-cache git
+
+WORKDIR /src
+RUN git clone ${BASE_MC_REPO} . \
+    && if [ "${BASE_MC_VERSION}" != "latest" ]; then git checkout ${BASE_MC_VERSION}; fi
+
+RUN CGO_ENABLED=0 go build -trimpath \
+    -ldflags "-s -w" \
+    -o /go/bin/mc .
+
+# ---------------------------------------------------------------------------
+# Stage 2: Runtime
+# ---------------------------------------------------------------------------
 FROM python:3.14-alpine
 
 # ---------------------------------------------------------------------------
@@ -51,7 +72,7 @@ ENV PYTHONUNBUFFERED=1
 # ---------------------------------------------------------------------------
 # Dependencies
 # ---------------------------------------------------------------------------
-COPY --from=mc-source /usr/bin/mc /usr/local/bin/mc
+COPY --from=mc-builder /go/bin/mc /usr/local/bin/mc
 RUN apk add --no-cache \
         curl \
         tini \
