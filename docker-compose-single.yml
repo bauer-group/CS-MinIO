@@ -17,7 +17,7 @@
 
 ### Service Templates ###
 x-minio-common: &minio-common
-  image: ${MINIO_IMAGE:-ghcr.io/bauer-group/cs-minio/minio}:${MINIO_VERSION:-stable}
+  image: ${MINIO_IMAGE:-ghcr.io/bauer-group/cs-minio/minio}:${MINIO_VERSION:-latest}
   restart: unless-stopped
   logging:
     driver: json-file
@@ -95,7 +95,7 @@ services:
 
   # MinIO Init Container (runs on every start, idempotent)
   minio-init:
-    image: ${MINIO_INIT_IMAGE:-ghcr.io/bauer-group/cs-minio/minio-init}:${MINIO_INIT_VERSION:-stable}
+    image: ${MINIO_INIT_IMAGE:-ghcr.io/bauer-group/cs-minio/minio-init}:${MINIO_INIT_VERSION:-latest}
     container_name: ${STACK_NAME:-s3-app}_INIT
     restart: "no"
     logging:
