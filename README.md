@@ -2,12 +2,15 @@
 
 Production-ready [MinIO](https://min.io/) S3-compatible object storage deployment with declarative JSON-based initialization, admin console, and full CI/CD automation.
 
+All three components (MinIO server, init container, admin console) are built from source using private forks for security patches and customization.
+
 ## Features
 
 - **S3-Compatible API** - Full Amazon S3 API compatibility via MinIO
+- **Built from Source** - All components compiled from private forks (security patches, custom features)
 - **Declarative Init Container** - JSON-based provisioning of buckets, policies, groups, users, and service accounts
-- **Admin Console** - Full management UI for users, policies, buckets, and monitoring
-- **Multiple Deployment Modes** - Direct port access or Traefik reverse proxy with automatic HTTPS
+- **Admin Console** - Full management UI for users, policies, buckets, and monitoring (replaces removed built-in browser)
+- **Multiple Deployment Modes** - Direct port access, Traefik reverse proxy with HTTPS, or development mode with local builds
 - **DNS-Style Bucket Access** - Prepared virtual-host-style routing (e.g., `bucket.s3.example.com`)
 - **CI/CD Automation** - Semantic releases, Docker image builds, base image monitoring, auto-merge
 
@@ -29,6 +32,7 @@ Production-ready [MinIO](https://min.io/) S3-compatible object storage deploymen
    - `CONSOLE_PASSWORD` - Console user password
 
 4. **Edit `config/minio-init.json`** - Configure buckets, policies, users as needed
+   (copy from `config/minio-init.example.json` for a full example)
 
 5. **Start MinIO**
    ```bash
@@ -37,14 +41,18 @@ Production-ready [MinIO](https://min.io/) S3-compatible object storage deploymen
 
    # Or: Traefik mode (HTTPS via reverse proxy)
    docker compose -f docker-compose-single-traefik.yml up -d
+
+   # Or: Development mode (local builds from source)
+   docker compose -f docker-compose-development.yml up -d --build
    ```
 
 6. **Access MinIO**
 
-   | Mode | S3 API | Console |
-   |------|--------|---------|
-   | Single | `http://localhost:9000` | `http://localhost:9001` |
-   | Traefik | `https://{S3_HOSTNAME}` | `https://{S3_CONSOLE_HOSTNAME}` |
+   | Mode        | S3 API                  | Console                         |
+   | ----------- | ----------------------- | ------------------------------- |
+   | Single      | `http://localhost:9000`   | `http://localhost:9001`         |
+   | Traefik     | `https://{S3_HOSTNAME}`   | `https://{S3_CONSOLE_HOSTNAME}` |
+   | Development | `http://localhost:9000`   | `http://localhost:9001`         |
 
 ## Architecture
 
@@ -55,11 +63,11 @@ Production-ready [MinIO](https://min.io/) S3-compatible object storage deploymen
 │  ┌──────────────┐    ┌──────────────┐    ┌────────────┐  │
 │  │ minio-server │◄───│  minio-init  │    │   admin-   │  │
 │  │              │    │  (one-shot)  │    │  console   │  │
-│  │  S3 API      │    │              │    │ (default)  │  │
+│  │  S3 API      │    │              │    │            │  │
 │  │  :9000       │    │  Applies     │    │  :9090     │  │
 │  │              │    │  JSON config │    │            │  │
 │  │  Console     │    │  on start    │    │  Full      │  │
-│  │  :9001       │    └──────────────┘    │  admin UI  │  │
+│  │  :9001 (off) │    └──────────────┘    │  admin UI  │  │
 │  └──────────────┘                        └────────────┘  │
 │         │                                      │         │
 │         └──────────────────────────────────────┘         │
@@ -71,10 +79,11 @@ Production-ready [MinIO](https://min.io/) S3-compatible object storage deploymen
 
 | Mode | Compose File | Description |
 |------|-------------|-------------|
-| **Single** | `docker-compose-single.yml` | Direct port binding, no reverse proxy needed |
+| **Single** | `docker-compose-single.yml` | Direct port binding, pre-built GHCR images |
 | **Single + Traefik** | `docker-compose-single-traefik.yml` | HTTPS via Traefik with Let's Encrypt certificates |
+| **Development** | `docker-compose-development.yml` | Local builds from `src/`, for development and testing |
 
-> **Note:** MinIO removed its built-in admin UI in [RELEASE.2025-05-24T17-08-30Z](https://github.com/minio/minio/releases/tag/RELEASE.2025-05-24T17-08-30Z). The admin console provides full management capabilities as a replacement.
+> **Note:** MinIO removed its built-in admin UI in [RELEASE.2025-05-24T17-08-30Z](https://github.com/minio/minio/releases/tag/RELEASE.2025-05-24T17-08-30Z). The admin console provides full management capabilities as a replacement. See [docs/aistor-migration.md](docs/aistor-migration.md) for details on MinIO's commercial successor.
 
 ## Configuration
 
@@ -160,16 +169,24 @@ All operations are idempotent. The init container runs on every start.
 
 See [src/minio-init/README.md](src/minio-init/README.md) for the full JSON schema reference.
 
-## Custom Docker Images
+## Docker Images
 
-This repository builds two Docker images:
+All three images are built from source using private forks:
 
-| Image | Base | Purpose |
-|-------|------|---------|
-| `ghcr.io/bauer-group/cs-minio/minio` | `quay.io/minio/minio` | MinIO server with health check and OCI labels |
-| `ghcr.io/bauer-group/cs-minio/minio-init` | `python:3.14-alpine` | Init container with mc client and task framework |
+| Image | Source Repository | Build |
+| ----- | ----------------- | ----- |
+| `ghcr.io/bauer-group/cs-minio/minio` | [karlspace/MinIO](https://github.com/karlspace/MinIO) | Go binary on Alpine |
+| `ghcr.io/bauer-group/cs-minio/minio-init` | [karlspace/MinIO-CLI](https://github.com/karlspace/MinIO-CLI) | mc client + Python on Alpine |
+| `ghcr.io/bauer-group/cs-minio/minio-console` | [karlspace/MinIO-UI](https://github.com/karlspace/MinIO-UI) | React + Go on Alpine |
 
-The server image currently uses the base image as-is. The Dockerfile provides a customization section for adding certificates, scripts, or configurations as needed.
+**Base images** (monitored for updates):
+
+| Base Image | Used By |
+| ---------- | ------- |
+| `golang:1.26-alpine` | MinIO server, mc client, console backend |
+| `node:22-alpine` | Console frontend (React/TypeScript) |
+| `python:3.14-alpine` | Init container runtime |
+| `alpine:3.23` | Server and console runtime stages |
 
 ## Traefik Integration
 
@@ -186,50 +203,57 @@ The Traefik deployment mode provides:
 
 Virtual-host-style bucket access (e.g., `bucket.s3.example.com`) is prepared but commented out in the Traefik compose file. To enable it:
 
-1. Configure wildcard certificates (requires DNS challenge) or explicit SANs
+1. Configure wildcard certificates (requires DNS challenge) or explicit SANs (`S3_BUCKET_SANS`)
 2. Uncomment the `HostRegexp` rules in `docker-compose-single-traefik.yml`
-3. Set `MINIO_DOMAIN` (already configured in the template)
+3. `MINIO_DOMAIN` is already configured in the template
 
 ## Project Structure
 
 ```
 .
-├── .github/                        # GitHub CI/CD configuration
-│   ├── CODEOWNERS                  # Pull request review assignments
-│   ├── dependabot.yml              # Automated dependency updates
+├── .github/                           # GitHub CI/CD configuration
+│   ├── CODEOWNERS                     # Pull request review assignments
+│   ├── dependabot.yml                 # Automated dependency updates
 │   ├── config/
-│   │   ├── release/                # Semantic release configuration
-│   │   └── docker-base-image-monitor/  # Base image monitoring
+│   │   ├── release/                   # Semantic release configuration
+│   │   └── docker-base-image-monitor/ # Base image monitoring
 │   └── workflows/
-│       ├── docker-release.yml      # Build, release, push images
-│       ├── docker-maintenance.yml  # Auto-merge Dependabot PRs
-│       ├── check-base-images.yml   # Daily base image update check
-│       ├── teams-notifications.yml # Microsoft Teams notifications
-│       └── ai-issue-summary.yml    # AI-powered issue summaries
+│       ├── docker-release.yml         # Build, release, push images
+│       ├── docker-maintenance.yml     # Auto-merge Dependabot PRs
+│       ├── check-base-images.yml      # Daily base image update check
+│       ├── teams-notifications.yml    # Microsoft Teams notifications
+│       └── ai-issue-summary.yml       # AI-powered issue summaries
 ├── src/
-│   ├── minio/                      # MinIO server image
-│   │   ├── Dockerfile              # Server image definition
+│   ├── minio/                         # MinIO server image (built from source)
+│   │   ├── Dockerfile                 # Go build → Alpine runtime
 │   │   └── .dockerignore
-│   └── minio-init/                 # Init container image
-│       ├── Dockerfile              # Init image definition
-│       ├── main.py                 # Orchestrator (task discovery, config loading)
-│       ├── README.md               # Init container documentation
-│       ├── config/
-│       │   └── default.json        # Built-in default (admin policy/group/user)
-│       └── tasks/
-│           ├── 01_buckets.py       # Bucket creation and configuration
-│           ├── 02_policies.py      # IAM policy create/update
-│           ├── 03_groups.py        # Group creation and policy attachment
-│           ├── 04_users.py         # User creation and group assignment
-│           └── 05_service_accounts.py  # Service accounts (dynamic credentials)
+│   ├── minio-init/                    # Init container image
+│   │   ├── Dockerfile                 # mc build + Python runtime
+│   │   ├── main.py                    # Orchestrator (task discovery, config loading)
+│   │   ├── README.md                  # Init container documentation
+│   │   ├── config/
+│   │   │   └── default.json           # Built-in default (admin policy/group/user)
+│   │   └── tasks/
+│   │       ├── 01_buckets.py          # Bucket creation and configuration
+│   │       ├── 02_policies.py         # IAM policy create/update
+│   │       ├── 03_groups.py           # Group creation and policy attachment
+│   │       ├── 04_users.py            # User creation and group assignment
+│   │       └── 05_service_accounts.py # Service accounts (dynamic credentials)
+│   └── minio-console/                 # Admin console image (built from source)
+│       ├── Dockerfile                 # Node + Go build → Alpine runtime
+│       └── .dockerignore
 ├── config/
-│   └── minio-init.json             # Init container configuration (user-facing)
-├── docker-compose-single.yml       # Single server, direct port access
+│   ├── minio-init.json                # Init container configuration (user-facing)
+│   └── minio-init.example.json        # Full example with all resource types
+├── docs/
+│   └── aistor-migration.md            # MinIO AIStor (licensed successor) info
+├── docker-compose-single.yml          # Single server, direct port access
 ├── docker-compose-single-traefik.yml  # Single server, Traefik HTTPS
-├── .env.example                    # Environment configuration template
-├── CHANGELOG.md                    # Release history (auto-generated)
-├── LICENSE                         # MIT License
-└── README.md                       # This file
+├── docker-compose-development.yml     # Development mode, local source builds
+├── .env.example                       # Environment configuration template
+├── CHANGELOG.md                       # Release history (auto-generated)
+├── LICENSE                            # MIT License
+└── README.md                          # This file
 ```
 
 ## CI/CD
@@ -246,7 +270,7 @@ The repository uses [semantic-release](https://github.com/semantic-release/seman
 
 1. Push to `main` triggers validation (compose files)
 2. Semantic release creates version tag and GitHub release
-3. Docker images are built and pushed to GHCR and Docker Hub
+3. All three Docker images are built and pushed to GHCR and Docker Hub
 4. Dependabot monitors base images weekly; auto-merges updates
 5. Daily base image monitor checks for new releases
 

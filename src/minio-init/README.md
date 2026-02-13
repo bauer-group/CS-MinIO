@@ -2,6 +2,8 @@
 
 One-shot initialization container that declaratively configures a MinIO server from JSON configuration files. Runs on every start and is fully idempotent.
 
+The `mc` client is built from source ([karlspace/MinIO-CLI](https://github.com/karlspace/MinIO-CLI)) and runs on a Python Alpine runtime.
+
 ## Configuration Loading
 
 The init container processes two configuration files in order:
@@ -86,20 +88,32 @@ Both configs are processed independently through all tasks. Idempotency ensures 
 
 ### Bucket Options
 
-| Field         | Type    | Default      | Description                                           |
-|---------------|---------|--------------|-------------------------------------------------------|
-| `name`        | string  | *(required)* | Bucket name                                           |
-| `region`      | string  | `""`         | Bucket region                                         |
-| `versioning`  | boolean | `false`      | Enable versioning (implied by `object_lock`)          |
-| `object_lock` | boolean | `false`      | Enable object-lock/WORM (must be set at creation time)|
-| `quota`       | object  | -            | `{"type": "hard", "size": "10GB"}`                    |
-| `retention`   | object  | -            | `{"mode": "compliance", "days": 365}` (requires lock) |
-| `policy`      | string  | `"private"`  | `private`, `public` (download), `public-readwrite`    |
+| Field         | Type    | Default      | Description                                            |
+| ------------- | ------- | ------------ | ------------------------------------------------------ |
+| `name`        | string  | *(required)* | Bucket name                                            |
+| `region`      | string  | `""`         | Bucket region                                          |
+| `versioning`  | boolean | `false`      | Enable versioning (implied by `object_lock`)           |
+| `object_lock` | boolean | `false`      | Enable object-lock/WORM (must be set at creation time) |
+| `quota`       | object  | -            | `{"type": "hard", "size": "10GB"}`                     |
+| `retention`   | object  | -            | `{"mode": "compliance", "days": 365}` (requires lock)  |
+| `policy`      | string  | `"private"`  | `private`, `public` (download), `public-readwrite`     |
+
+**Retention validity:** Specify either `days` or `years` in the retention object. The init container converts these to the `mc retention set` format (`365d` or `1y`).
+
+**Existing bucket limitations:**
+
+| Setting       | New Bucket | Existing Bucket |
+| ------------- | ---------- | --------------- |
+| `object_lock` | Applied    | Ignored (immutable after creation) |
+| `versioning`  | Applied    | Applied         |
+| `quota`       | Applied    | Updated         |
+| `retention`   | Applied    | Updated         |
+| `policy`      | Applied    | Updated         |
 
 ### Service Account Options
 
 | Field         | Type   | Default      | Description                                     |
-|---------------|--------|--------------|-------------------------------------------------|
+| ------------- | ------ | ------------ | ----------------------------------------------- |
 | `user`        | string | *(required)* | Parent user for the service account             |
 | `name`        | string | `sa-{user}`  | Display name (used as filename for credentials) |
 | `description` | string | `""`         | Description                                     |
@@ -118,20 +132,22 @@ Credentials are generated dynamically by MinIO and written to `/data/credentials
 
 ## Task Reference
 
-| Order | Task             | Config Key         | Description                                          |
-|-------|------------------|--------------------|------------------------------------------------------|
-| 01    | Buckets          | `buckets`          | Create buckets with versioning, lock, quotas         |
-| 02    | Policies         | `policies`         | Create or update IAM policy documents                |
-| 03    | Groups           | `groups`           | Create groups and attach policies                    |
-| 04    | Users            | `users`            | Create users, assign to groups, attach policies      |
-| 05    | Service Accounts | `service_accounts` | Create service accounts with dynamic credentials     |
+| Order | Task             | Config Key         | Description                                      |
+| ----- | ---------------- | ------------------ | ------------------------------------------------ |
+| 01    | Buckets          | `buckets`          | Create buckets with versioning, lock, quotas     |
+| 02    | Policies         | `policies`         | Create or update IAM policy documents            |
+| 03    | Groups           | `groups`           | Create groups and attach policies                |
+| 04    | Users            | `users`            | Create users, assign to groups, attach policies  |
+| 05    | Service Accounts | `service_accounts` | Create service accounts with dynamic credentials |
 
 > **Note:** Groups are implicitly created when a policy is attached via `mc admin policy attach --group`. Each group must have at least one policy. The users task (04) then adds users as members to the existing groups.
+
+> **Note:** The init container is additive only - it creates and updates resources but does not remove them. To delete buckets, policies, users, or groups, use the admin console or `mc` CLI directly.
 
 ## Environment Variables
 
 | Variable                | Default                    | Description                         |
-|-------------------------|----------------------------|-------------------------------------|
+| ----------------------- | -------------------------- | ----------------------------------- |
 | `MINIO_ENDPOINT`        | `http://minio-server:9000` | MinIO server URL                    |
 | `MINIO_ROOT_USER`       | `minioadmin`               | MinIO root username                 |
 | `MINIO_ROOT_PASSWORD`   | `minioadmin`               | MinIO root password                 |
