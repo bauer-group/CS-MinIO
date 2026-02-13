@@ -86,9 +86,10 @@ services:
         max-file: "3"
     environment:
       - TZ=${TIME_ZONE:-Etc/UTC}
-      - MINIO_ENDPOINT=http://minio-server:9000
-      - MINIO_ACCESS_KEY=${CONSOLE_USER:-console-admin}
-      - MINIO_SECRET_KEY=${CONSOLE_PASSWORD}
+      - CONSOLE_MINIO_SERVER=http://minio-server:9000
+      - CONSOLE_MINIO_REGION=${MINIO_REGION:-eu-central-1}
+      - CONSOLE_ACCESS_KEY=${CONSOLE_USER:-console-admin}
+      - CONSOLE_SECRET_KEY=${CONSOLE_PASSWORD:-console-admin}
     expose:
       - 9090/tcp
     ports:
