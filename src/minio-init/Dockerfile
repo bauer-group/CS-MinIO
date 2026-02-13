@@ -18,9 +18,9 @@
 # Extract mc client from official Docker image (safer than direct download,
 # as MinIO may discontinue the CDN at any time)
 # ---------------------------------------------------------------------------
-ARG MC_IMAGE=quay.io/minio/mc
-ARG MC_VERSION=latest
-FROM ${MC_IMAGE}:${MC_VERSION} AS mc-source
+ARG BASE_MC_IMAGE=quay.io/minio/mc
+ARG BASE_MC_VERSION=latest
+FROM ${BASE_MC_IMAGE}:${BASE_MC_VERSION} AS mc-source
 
 FROM python:3.14-alpine
 

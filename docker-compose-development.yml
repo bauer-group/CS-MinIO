@@ -107,8 +107,8 @@ services:
     build:
       context: ./src/minio-init
       args:
-        - MC_IMAGE=${MC_IMAGE:-quay.io/minio/mc}
-        - MC_VERSION=${MC_VERSION:-latest}
+        - BASE_MC_IMAGE=${BASE_MC_IMAGE:-quay.io/minio/mc}
+        - BASE_MC_VERSION=${BASE_MC_VERSION:-latest}
     container_name: ${STACK_NAME:-s3-app}_INIT
     restart: "no"
     logging:
