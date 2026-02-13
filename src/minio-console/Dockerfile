@@ -28,8 +28,7 @@ ARG BASE_CONSOLE_VERSION
 RUN apk add --no-cache git
 
 WORKDIR /workspace
-RUN git clone ${BASE_CONSOLE_REPO} . \
-    && git checkout ${BASE_CONSOLE_VERSION}
+RUN git clone --depth 1 --branch ${BASE_CONSOLE_VERSION} ${BASE_CONSOLE_REPO} .
 
 WORKDIR /workspace/web-app
 RUN corepack enable && corepack prepare && yarn install && yarn build

@@ -20,7 +20,7 @@
 ARG BASE_GO_IMAGE=golang
 ARG BASE_GO_VERSION=1.26-alpine
 ARG BASE_MC_REPO=https://github.com/karlspace/MinIO-CLI.git
-ARG BASE_MC_VERSION=latest
+ARG BASE_MC_VERSION=master
 
 # ---------------------------------------------------------------------------
 # Stage 1: Build mc client from source
@@ -33,8 +33,7 @@ ARG BASE_MC_VERSION
 RUN apk add --no-cache git
 
 WORKDIR /src
-RUN git clone ${BASE_MC_REPO} . \
-    && if [ "${BASE_MC_VERSION}" != "latest" ]; then git checkout ${BASE_MC_VERSION}; fi
+RUN git clone --depth 1 --branch ${BASE_MC_VERSION} ${BASE_MC_REPO} .
 
 RUN CGO_ENABLED=0 go build -trimpath \
     -tags kqueue \

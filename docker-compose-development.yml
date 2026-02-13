@@ -113,7 +113,7 @@ services:
       context: ./src/minio-init
       args:
         - BASE_MC_REPO=${BASE_MC_REPO:-https://github.com/karlspace/MinIO-CLI.git}
-        - BASE_MC_VERSION=${BASE_MC_VERSION:-latest}
+        - BASE_MC_VERSION=${BASE_MC_VERSION:-master}
     container_name: ${STACK_NAME:-s3-app}_INIT
     restart: "no"
     logging:

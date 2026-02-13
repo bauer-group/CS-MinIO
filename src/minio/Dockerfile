@@ -28,8 +28,7 @@ ARG BASE_MINIO_VERSION
 RUN apk add --no-cache git
 
 WORKDIR /src
-RUN git clone ${BASE_MINIO_REPO} . \
-    && git checkout ${BASE_MINIO_VERSION}
+RUN git clone --depth 1 --branch ${BASE_MINIO_VERSION} ${BASE_MINIO_REPO} .
 
 RUN CGO_ENABLED=0 go build -trimpath \
     -tags kqueue \
