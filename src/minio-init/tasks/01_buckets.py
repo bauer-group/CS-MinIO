@@ -122,16 +122,15 @@ def run(items: list, console, **kwargs) -> dict:
         retention = bucket.get("retention")
         if retention:
             mode = retention.get("mode", "compliance").upper()
-            validity = str(retention.get("days", 0))
-            validity_unit = "DAYS"
 
             if retention.get("years"):
-                validity = str(retention["years"])
-                validity_unit = "YEARS"
+                validity = f"{retention['years']}y"
+            else:
+                validity = f"{retention.get('days', 0)}d"
 
-            result = _mc(["retention", "set", "--default", mode, f"--{validity_unit.lower()}", validity, target])
+            result = _mc(["retention", "set", "--default", mode, validity, target])
             if result.returncode == 0:
-                console.print(f"    [dim]  Retention: {mode} {validity} {validity_unit.lower()}[/]")
+                console.print(f"    [dim]  Retention: {mode} {validity}[/]")
                 configured += 1
             else:
                 console.print(f"    [yellow]  Retention set failed: {result.stderr.strip()}[/]")
