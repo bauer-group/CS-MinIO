@@ -2,25 +2,32 @@
   "$schema": "https://raw.githubusercontent.com/bauer-group/automation-templates/main/.github/config/docker-base-image-monitor/docker-base-images.schema.json",
   "images": [
     {
-      "name": "minio",
-      "image": "quay.io/minio/minio",
-      "tag": "latest",
-      "variable": "MINIO_RELEASE_DIGEST",
-      "description": "MinIO S3-compatible object storage server"
+      "name": "golang-alpine",
+      "image": "golang",
+      "tag": "1.26-alpine",
+      "variable": "GOLANG_ALPINE_DIGEST",
+      "description": "Go compiler for MinIO server, mc client, and console builds"
     },
     {
-      "name": "minio-mc",
-      "image": "quay.io/minio/mc",
-      "tag": "latest",
-      "variable": "MINIO_MC_DIGEST",
-      "description": "MinIO Client (mc) - extracted into minio-init image"
+      "name": "node-alpine",
+      "image": "node",
+      "tag": "22-alpine",
+      "variable": "NODE_ALPINE_DIGEST",
+      "description": "Node.js for MinIO console frontend build"
     },
     {
       "name": "python-alpine",
       "image": "python",
       "tag": "3.14-alpine",
       "variable": "PYTHON_ALPINE_DIGEST",
-      "description": "Python Alpine base image for minio-init"
+      "description": "Python Alpine runtime for minio-init container"
+    },
+    {
+      "name": "alpine",
+      "image": "alpine",
+      "tag": "3.23",
+      "variable": "ALPINE_DIGEST",
+      "description": "Alpine runtime for MinIO server and console images"
     }
   ],
   "settings": {

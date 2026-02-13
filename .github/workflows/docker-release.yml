@@ -167,3 +167,59 @@ jobs:
       security-scan: false
       security-fail-on: 'CRITICAL'
     secrets: inherit
+
+  # ============================================
+  # MinIO Console Docker Build Jobs
+  # ============================================
+
+  docker-build-console-release:
+    name: "\U0001F433 Build & Push Console Image"
+    needs: release
+    if: needs.release.outputs.release-created == 'true'
+    uses: bauer-group/automation-templates/.github/workflows/docker-build.yml@main
+    with:
+      deploy-environment: 'production'
+      publish-to: 'ghcr'
+      ghcr-image-name: 'bauer-group/CS-MinIO/minio-console'
+      docker-image-name: 'bauergroup/minio-console'
+
+      release-version: ${{ needs.release.outputs.version }}
+      image-tags: 'latest'
+
+      update-dockerfile-version: true
+      auto-tags: true
+      latest-tag: true
+
+      dockerfile-path: './src/minio-console/Dockerfile'
+      docker-context: './src/minio-console'
+      platforms: 'linux/amd64'
+
+      push: true
+
+      security-scan: false
+      security-fail-on: 'CRITICAL'
+      generate-sbom: true
+      sync-dockerhub-readme: true
+    secrets: inherit
+
+  docker-build-console-pr:
+    name: "\U0001F528 Validate Console Build (PR)"
+    needs: [validate-compose]
+    if: |
+      github.event_name == 'pull_request' &&
+      needs.validate-compose.result == 'success'
+    uses: bauer-group/automation-templates/.github/workflows/docker-build.yml@main
+    with:
+      publish-to: 'ghcr'
+      ghcr-image-name: 'bauer-group/CS-MinIO/minio-console'
+
+      auto-tags: true
+      dockerfile-path: './src/minio-console/Dockerfile'
+      docker-context: './src/minio-console'
+      platforms: 'linux/amd64'
+
+      push: false
+
+      security-scan: false
+      security-fail-on: 'CRITICAL'
+    secrets: inherit
