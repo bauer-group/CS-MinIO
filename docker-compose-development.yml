@@ -125,6 +125,7 @@ services:
       # Pass through environment variables used in config JSON files
       - CONSOLE_USER=${CONSOLE_USER:-console-admin}
       - CONSOLE_PASSWORD=${CONSOLE_PASSWORD:-console-admin}
+      
       - APP_USER=${APP_USER:-app-service}
       - APP_PASSWORD=${APP_PASSWORD:-app-service}
       - BACKUP_USER=${BACKUP_USER:-backup-agent}
