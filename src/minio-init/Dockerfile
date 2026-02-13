@@ -37,6 +37,7 @@ RUN git clone ${BASE_MC_REPO} . \
     && if [ "${BASE_MC_VERSION}" != "latest" ]; then git checkout ${BASE_MC_VERSION}; fi
 
 RUN CGO_ENABLED=0 go build -trimpath \
+    -tags kqueue \
     -ldflags "-s -w" \
     -o /go/bin/mc .
 
