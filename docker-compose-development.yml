@@ -45,12 +45,6 @@ x-minio-common: &minio-common
     # Metrics endpoints: /minio/v2/metrics/cluster, /minio/v2/metrics/node
     # Uncomment to allow unauthenticated scraping (default: jwt):
     # - MINIO_PROMETHEUS_AUTH_TYPE=public
-  healthcheck:
-    test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
-    interval: 30s
-    timeout: 10s
-    start_period: 30s
-    retries: 4
   expose:
     - 9000/tcp
     - 9001/tcp
