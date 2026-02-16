@@ -109,8 +109,8 @@ EXPOSE 9090
 # ---------------------------------------------------------------------------
 # Health Check
 # ---------------------------------------------------------------------------
-HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
-    CMD curl -sf http://localhost:9090/api/v1/health || exit 1
+HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=4 \
+    CMD curl -sf http://localhost:9090/ || exit 1
 
 ENTRYPOINT ["/app/entrypoint.sh"]
 CMD ["server"]
