@@ -1,3 +1,10 @@
+## [0.2.2](https://github.com/bauer-group/CS-MinIO/compare/v0.2.1...v0.2.2) (2026-02-16)
+
+### 🐛 Bug Fixes
+
+* remove healthcheck configuration from docker-compose files ([d5cf0d0](https://github.com/bauer-group/CS-MinIO/commit/d5cf0d0f2506e7d02a005833677ea0a332aa1297))
+* update health check parameters in Dockerfile for improved reliability ([28f3697](https://github.com/bauer-group/CS-MinIO/commit/28f36975b7b397cd1de6b868f5d6aef439efcc35))
+
 ## [0.2.1](https://github.com/bauer-group/CS-MinIO/compare/v0.2.0...v0.2.1) (2026-02-14)
 
 ## [0.2.0](https://github.com/bauer-group/CS-MinIO/compare/v0.1.0...v0.2.0) (2026-02-13)
