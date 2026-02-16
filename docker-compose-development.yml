@@ -60,7 +60,6 @@ x-minio-common: &minio-common
 
 services:
 ### Application Services ###
-
   # MinIO S3 Server
   minio-server:
     <<: *minio-common
@@ -73,7 +72,6 @@ services:
 
 
 ### Admin Console ###
-
   admin-console:
     build:
       context: ./src/minio-console
@@ -106,7 +104,6 @@ services:
 
 
 ### Initialization ###
-
   # MinIO Init Container (runs on every start, idempotent)
   minio-init:
     build:

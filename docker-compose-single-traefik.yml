@@ -67,7 +67,6 @@ x-minio-common: &minio-common
 
 services:
 ### Application Services ###
-
   # MinIO S3 Server
   minio-server:
     <<: *minio-common
@@ -136,7 +135,6 @@ services:
 
 
 ### Admin Console ###
-
   admin-console:
     image: ${CONSOLE_IMAGE:-ghcr.io/bauer-group/cs-minio/minio-console}:${CONSOLE_VERSION:-latest}
     container_name: ${STACK_NAME:-s3-app}_CONSOLE
@@ -181,7 +179,6 @@ services:
 
 
 ### Initialization ###
-
   # MinIO Init Container (runs on every start, idempotent)
   minio-init:
     image: ${MINIO_INIT_IMAGE:-ghcr.io/bauer-group/cs-minio/minio-init}:${MINIO_INIT_VERSION:-latest}
