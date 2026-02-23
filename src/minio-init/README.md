@@ -155,11 +155,11 @@ Credentials are generated dynamically by MinIO and written to `/data/credentials
 | ----- | ---------------- | ------------------ | ------------------------------------------------------- |
 | 01    | Buckets          | `buckets`          | Create buckets with versioning, lock, quotas, lifecycle |
 | 02    | Policies         | `policies`         | Create or update IAM policy documents                   |
-| 03    | Groups           | `groups`           | Create groups and attach policies                       |
-| 04    | Users            | `users`            | Create users, assign to groups, attach policies         |
+| 03    | Users            | `users`            | Create users, assign to groups, attach policies         |
+| 04    | Groups           | `groups`           | Attach policies to groups                               |
 | 05    | Service Accounts | `service_accounts` | Create service accounts with dynamic credentials        |
 
-> **Note:** Groups are implicitly created when a policy is attached via `mc admin policy attach --group`. Each group must have at least one policy. The users task (04) then adds users as members to the existing groups.
+> **Note:** Users (03) run before groups (04). Groups are implicitly created when users are added via `mc admin group add`. The groups task then attaches policies via `mc admin policy attach --group`. This ordering ensures policy attachments persist (group membership updates cannot overwrite them).
 
 > **Note:** The init container is additive only - it creates and updates resources but does not remove them. To delete buckets, policies, users, or groups, use the admin console or `mc` CLI directly.
 

@@ -11,7 +11,7 @@ All three components (MinIO server, init container, admin console) are built fro
 - **Declarative Init Container** - Fully automatic infrastructure provisioning from a single JSON file:
   - **Buckets** with versioning, object-lock/WORM, hard quotas, retention policies, and anonymous access control
   - **IAM Policies** as fine-grained S3 policy documents (create or update)
-  - **Groups & Users** with automatic group membership and direct policy attachment
+  - **Users & Groups** with automatic group membership and direct policy attachment
   - **Service Accounts** with dynamic server-generated credentials, written as JSON files to a shared volume for consumption by other containers
   - **Environment Variable Resolution** - `${VAR_NAME}` syntax in JSON values keeps secrets out of config files
   - **Fully Idempotent** - Runs on every container start; safely skips already-existing resources
@@ -244,8 +244,8 @@ Virtual-host-style bucket access (e.g., `bucket.s3.example.com`) is prepared but
 │   │   └── tasks/
 │   │       ├── 01_buckets.py          # Bucket creation and configuration
 │   │       ├── 02_policies.py         # IAM policy create/update
-│   │       ├── 03_groups.py           # Group creation and policy attachment
-│   │       ├── 04_users.py            # User creation and group assignment
+│   │       ├── 03_users.py            # User creation and group assignment
+│   │       ├── 04_groups.py           # Group policy attachment
 │   │       └── 05_service_accounts.py # Service accounts (dynamic credentials)
 │   └── minio-console/                 # Admin console image (built from source)
 │       ├── Dockerfile                 # Node + Go build → Alpine runtime

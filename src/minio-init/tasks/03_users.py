@@ -2,11 +2,11 @@
 User Creation Task
 
 Creates MinIO users with group membership and direct policy attachments.
-Runs AFTER the groups task in the order: bucket → policy → group → user.
+Runs BEFORE the groups task in the order: bucket → policy → user → group.
 
-Groups already exist at this point (created by policy attachment in
-03_groups.py). This task adds users as members and attaches any direct
-user-level policies.
+Groups are implicitly created by mc admin group add when adding users.
+The groups task (04) then attaches policies to these groups. This ordering
+ensures policy attachments are not overwritten by group membership updates.
 
 JSON config example:
 {
@@ -58,7 +58,7 @@ def run(items: list, console, **kwargs) -> dict:
             console.print(f"    [red]Failed to create user {access_key}: {result.stderr.strip()}[/]")
             continue
 
-        # Add to groups (groups already exist from 03_groups task)
+        # Add to groups (groups created implicitly, policies attached by 04_groups task)
         for group_name in user.get("groups", []):
             result = _mc(["admin", "group", "add", MC_ALIAS, group_name, access_key])
             if result.returncode == 0:

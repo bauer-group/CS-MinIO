@@ -1,12 +1,13 @@
 """
-Group Creation and Policy Attachment Task
+Group Policy Attachment Task
 
-Creates groups by attaching IAM policies. Runs BEFORE the users task
-in the logical order: bucket → policy → group → user.
+Attaches IAM policies to groups. Runs AFTER the users task in the order:
+bucket → policy → user → group.
 
-A group in MinIO is implicitly created when a policy is attached to it
-via mc admin policy attach --group. Each group must have at least one
-policy assigned.
+Groups are implicitly created when users are added (mc admin group add
+in 03_users.py). This task then attaches policies to the existing groups
+via mc admin policy attach --group. Running AFTER user creation ensures
+that group membership updates cannot overwrite policy attachments.
 
 JSON config example:
 {
@@ -22,7 +23,7 @@ JSON config example:
 import subprocess
 
 TASK_NAME = "Groups"
-TASK_DESCRIPTION = "Create groups and attach policies"
+TASK_DESCRIPTION = "Attach policies to groups"
 CONFIG_KEY = "groups"
 
 MC_ALIAS = "minio"
@@ -51,7 +52,7 @@ def run(items: list, console, **kwargs) -> dict:
             console.print(f"    [yellow]Warning: Group '{name}' has no policies - skipped (at least one required)[/]")
             continue
 
-        # Attach policies (implicitly creates the group)
+        # Attach policies (implicitly creates the group if it doesn't exist)
         for policy_name in policies:
             result = _mc(["admin", "policy", "attach", MC_ALIAS, policy_name, "--group", name])
             if result.returncode == 0:
