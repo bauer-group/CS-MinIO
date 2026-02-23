@@ -17,7 +17,7 @@ Both configs are processed independently through all tasks. Idempotency ensures 
 
 ## Features
 
-- **Buckets**: Create with versioning, object-lock/WORM, quotas, retention, anonymous access
+- **Buckets**: Create with versioning, object-lock/WORM, quotas, retention, lifecycle rules, anonymous access
 - **IAM Policies**: Create or update custom S3 policy documents
 - **Users**: Create users with group membership and direct policies
 - **Groups**: Attach policies to groups (groups are created implicitly when policies are attached)
@@ -37,6 +37,10 @@ Both configs are processed independently through all tasks. Idempotency ensures 
       "object_lock": true,
       "quota": { "type": "hard", "size": "10GB" },
       "retention": { "mode": "compliance", "days": 365 },
+      "lifecycle_rules": [
+        { "prefix": "daily/", "expire_days": 15 },
+        { "prefix": "archive/", "expire_days": 365, "noncurrent_expire_days": 30 }
+      ],
       "policy": "private"
     }
   ],
@@ -95,20 +99,35 @@ Both configs are processed independently through all tasks. Idempotency ensures 
 | `versioning`  | boolean | `false`      | Enable versioning (implied by `object_lock`)           |
 | `object_lock` | boolean | `false`      | Enable object-lock/WORM (must be set at creation time) |
 | `quota`       | object  | -            | `{"type": "hard", "size": "10GB"}`                     |
-| `retention`   | object  | -            | `{"mode": "compliance", "days": 365}` (requires lock)  |
-| `policy`      | string  | `"private"`  | `private`, `public` (download), `public-readwrite`     |
+| `retention`       | object  | -            | `{"mode": "compliance", "days": 365}` (requires lock)  |
+| `lifecycle_rules` | array   | `[]`         | Prefix-based expiration rules (see below)              |
+| `policy`          | string  | `"private"`  | `private`, `public` (download), `public-readwrite`     |
 
 **Retention validity:** Specify either `days` or `years` in the retention object. The init container converts these to the `mc retention set` format (`365d` or `1y`).
 
+**Lifecycle rules:** Each rule in the `lifecycle_rules` array supports:
+
+| Field                    | Type    | Required | Default | Description                              |
+| ------------------------ | ------- | -------- | ------- | ---------------------------------------- |
+| `prefix`                 | string  | No       | `""`    | Object prefix filter (empty = all)       |
+| `expire_days`            | integer | No*      | -       | Expire current versions after N days     |
+| `noncurrent_expire_days` | integer | No       | -       | Expire noncurrent versions after N days  |
+| `expire_delete_marker`   | boolean | No       | `false` | Remove expired delete markers            |
+
+\*At least one of `expire_days` or `noncurrent_expire_days` is required.
+
+Lifecycle rules are matched by prefix for idempotency. On re-run, existing rules with the same prefix are updated if settings differ, or left unchanged if already correct. Rules not present in the config are not removed (additive-only).
+
 **Existing bucket limitations:**
 
-| Setting       | New Bucket | Existing Bucket |
-| ------------- | ---------- | --------------- |
-| `object_lock` | Applied    | Ignored (immutable after creation) |
-| `versioning`  | Applied    | Applied         |
-| `quota`       | Applied    | Updated         |
-| `retention`   | Applied    | Updated         |
-| `policy`      | Applied    | Updated         |
+| Setting           | New Bucket | Existing Bucket                    |
+| ----------------- | ---------- | ---------------------------------- |
+| `object_lock`     | Applied    | Ignored (immutable after creation) |
+| `versioning`      | Applied    | Applied                            |
+| `quota`           | Applied    | Updated                            |
+| `retention`       | Applied    | Updated                            |
+| `lifecycle_rules` | Applied    | Updated (per-prefix idempotent)    |
+| `policy`          | Applied    | Updated                            |
 
 ### Service Account Options
 
@@ -132,13 +151,13 @@ Credentials are generated dynamically by MinIO and written to `/data/credentials
 
 ## Task Reference
 
-| Order | Task             | Config Key         | Description                                      |
-| ----- | ---------------- | ------------------ | ------------------------------------------------ |
-| 01    | Buckets          | `buckets`          | Create buckets with versioning, lock, quotas     |
-| 02    | Policies         | `policies`         | Create or update IAM policy documents            |
-| 03    | Groups           | `groups`           | Create groups and attach policies                |
-| 04    | Users            | `users`            | Create users, assign to groups, attach policies  |
-| 05    | Service Accounts | `service_accounts` | Create service accounts with dynamic credentials |
+| Order | Task             | Config Key         | Description                                             |
+| ----- | ---------------- | ------------------ | ------------------------------------------------------- |
+| 01    | Buckets          | `buckets`          | Create buckets with versioning, lock, quotas, lifecycle |
+| 02    | Policies         | `policies`         | Create or update IAM policy documents                   |
+| 03    | Groups           | `groups`           | Create groups and attach policies                       |
+| 04    | Users            | `users`            | Create users, assign to groups, attach policies         |
+| 05    | Service Accounts | `service_accounts` | Create service accounts with dynamic credentials        |
 
 > **Note:** Groups are implicitly created when a policy is attached via `mc admin policy attach --group`. Each group must have at least one policy. The users task (04) then adds users as members to the existing groups.
 

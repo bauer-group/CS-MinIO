@@ -13,6 +13,12 @@
       "versioning": true,
       "object_lock": true,
       "retention": { "mode": "compliance", "days": 365 },
+      "lifecycle_rules": [
+        { "prefix": "last/", "expire_days": 2 },
+        { "prefix": "daily/", "expire_days": 15 },
+        { "prefix": "weekly/", "expire_days": 36 },
+        { "prefix": "monthly/", "expire_days": 186 }
+      ],
       "policy": "private"
     },
     {

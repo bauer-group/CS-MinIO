@@ -4,7 +4,7 @@
 # One-shot container that configures MinIO from a JSON configuration file.
 #
 # Features:
-#   - Bucket creation (versioning, quotas, retention, anonymous policy)
+#   - Bucket creation (versioning, quotas, retention, lifecycle rules, anonymous policy)
 #   - Custom IAM policy management
 #   - Group creation with policy attachment
 #   - User creation with group membership

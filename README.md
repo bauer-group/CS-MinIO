@@ -122,13 +122,13 @@ All operations are idempotent. The init container runs on every start.
 
 **Supported resources:**
 
-| Resource             | Description                                                         |
-|----------------------|---------------------------------------------------------------------|
-| `buckets`            | Create buckets with versioning, object-lock/WORM, quotas, retention |
-| `policies`           | Create or update custom IAM policy documents                        |
-| `groups`             | Create groups and attach policies                                   |
-| `users`              | Create users, assign to groups, attach direct policies              |
-| `service_accounts`   | Create service accounts with dynamic server-generated credentials   |
+| Resource           | Description                                                                          |
+| ------------------ | ------------------------------------------------------------------------------------ |
+| `buckets`          | Create buckets with versioning, object-lock/WORM, quotas, retention, lifecycle rules |
+| `policies`         | Create or update custom IAM policy documents                                         |
+| `groups`           | Create groups and attach policies                                                    |
+| `users`            | Create users, assign to groups, attach direct policies                               |
+| `service_accounts` | Create service accounts with dynamic server-generated credentials                    |
 
 **Environment variable resolution:** JSON values support `${VAR_NAME}` syntax. Variables are resolved from the container's environment at runtime, keeping secrets out of config files.
 
