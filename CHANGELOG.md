@@ -1,3 +1,9 @@
+## [0.3.0](https://github.com/bauer-group/CS-MinIO/compare/v0.2.2...v0.3.0) (2026-02-23)
+
+### 🚀 Features
+
+* add lifecycle rules support for buckets and update documentation ([a91b9a0](https://github.com/bauer-group/CS-MinIO/commit/a91b9a0402ec217476a613c1244ca81dabb4fcdc))
+
 ## [0.2.2](https://github.com/bauer-group/CS-MinIO/compare/v0.2.1...v0.2.2) (2026-02-16)
 
 ### 🐛 Bug Fixes
