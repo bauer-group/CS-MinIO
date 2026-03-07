@@ -1,3 +1,11 @@
+## [0.3.2](https://github.com/bauer-group/CS-MinIO/compare/v0.3.1...v0.3.2) (2026-03-06)
+
+## [0.3.1](https://github.com/bauer-group/CS-MinIO/compare/v0.3.0...v0.3.1) (2026-02-23)
+
+### 🐛 Bug Fixes
+
+* reorganize user and group tasks for clarity and maintainability ([52f45fa](https://github.com/bauer-group/CS-MinIO/commit/52f45fa02122ff8eed62589375285bceef3b871e))
+
 ## [0.3.0](https://github.com/bauer-group/CS-MinIO/compare/v0.2.2...v0.3.0) (2026-02-23)
 
 ### 🚀 Features
