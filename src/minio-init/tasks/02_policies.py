@@ -35,11 +35,25 @@ MC_ALIAS = "minio"
 
 
 def _mc(args: list) -> subprocess.CompletedProcess:
-    return subprocess.run(
+    result = subprocess.run(
         ["mc", "--json"] + args,
         capture_output=True,
         text=True,
     )
+    # mc --json outputs errors to stdout as JSON, not stderr
+    if result.returncode != 0 and not result.stderr.strip():
+        for line in (result.stdout or "").splitlines():
+            try:
+                err = json.loads(line).get("error", {})
+                if isinstance(err, dict) and err.get("message"):
+                    result.stderr = err["message"]
+                    break
+                elif isinstance(err, str) and err:
+                    result.stderr = err
+                    break
+            except (json.JSONDecodeError, AttributeError):
+                continue
+    return result
 
 
 def _policy_exists(name: str) -> bool:

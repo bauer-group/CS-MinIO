@@ -21,6 +21,8 @@ JSON config example:
 }
 """
 
+import json
+import os
 import subprocess
 
 TASK_NAME = "Users"
@@ -31,11 +33,25 @@ MC_ALIAS = "minio"
 
 
 def _mc(args: list) -> subprocess.CompletedProcess:
-    return subprocess.run(
+    result = subprocess.run(
         ["mc", "--json"] + args,
         capture_output=True,
         text=True,
     )
+    # mc --json outputs errors to stdout as JSON, not stderr
+    if result.returncode != 0 and not result.stderr.strip():
+        for line in (result.stdout or "").splitlines():
+            try:
+                err = json.loads(line).get("error", {})
+                if isinstance(err, dict) and err.get("message"):
+                    result.stderr = err["message"]
+                    break
+                elif isinstance(err, str) and err:
+                    result.stderr = err
+                    break
+            except (json.JSONDecodeError, AttributeError):
+                continue
+    return result
 
 
 def run(items: list, console, **kwargs) -> dict:
@@ -43,10 +59,19 @@ def run(items: list, console, **kwargs) -> dict:
         return {"skipped": True, "message": "No users configured"}
 
     created = 0
+    root_user = os.environ.get("MINIO_ROOT_USER", "minioadmin")
 
     for user in items:
         access_key = user["access_key"]
         secret_key = user["secret_key"]
+
+        # Skip root user - cannot be managed as IAM user
+        if access_key == root_user:
+            console.print(
+                f"    [yellow]Skipped '{access_key}': this is the root user "
+                f"(MINIO_ROOT_USER), not an IAM user[/]"
+            )
+            continue
 
         # Create user (idempotent: updates password if user exists)
         result = _mc(["admin", "user", "add", MC_ALIAS, access_key, secret_key])

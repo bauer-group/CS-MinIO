@@ -49,11 +49,25 @@ CREDENTIALS_DIR = os.environ.get("MINIO_CREDENTIALS_DIR", "/data/credentials")
 
 
 def _mc(args: list) -> subprocess.CompletedProcess:
-    return subprocess.run(
+    result = subprocess.run(
         ["mc", "--json"] + args,
         capture_output=True,
         text=True,
     )
+    # mc --json outputs errors to stdout as JSON, not stderr
+    if result.returncode != 0 and not result.stderr.strip():
+        for line in (result.stdout or "").splitlines():
+            try:
+                err = json.loads(line).get("error", {})
+                if isinstance(err, dict) and err.get("message"):
+                    result.stderr = err["message"]
+                    break
+                elif isinstance(err, str) and err:
+                    result.stderr = err
+                    break
+            except (json.JSONDecodeError, AttributeError):
+                continue
+    return result
 
 
 def _find_existing_sa(user: str, sa_name: str) -> str | None:
@@ -105,12 +119,24 @@ def _create_sa(cmd: list, sa_policy: str | None) -> subprocess.CompletedProcess:
             # Fetch the named policy document from MinIO
             policy_result = _mc(["admin", "policy", "info", MC_ALIAS, sa_policy])
             if policy_result.returncode == 0:
-                with tempfile.NamedTemporaryFile(
-                    mode="w", suffix=".json", delete=False, prefix="sa-policy-"
-                ) as f:
-                    f.write(policy_result.stdout)
-                    policy_path = f.name
-                cmd.extend(["--policy", policy_path])
+                # mc --json wraps output in metadata; extract the raw IAM policy
+                policy_doc = None
+                for line in policy_result.stdout.strip().splitlines():
+                    try:
+                        data = json.loads(line)
+                        if "policyJSON" in data:
+                            policy_doc = data["policyJSON"]
+                            break
+                    except json.JSONDecodeError:
+                        continue
+
+                if policy_doc:
+                    with tempfile.NamedTemporaryFile(
+                        mode="w", suffix=".json", delete=False, prefix="sa-policy-"
+                    ) as f:
+                        json.dump(policy_doc, f, indent=2)
+                        policy_path = f.name
+                    cmd.extend(["--policy", policy_path])
 
         return _mc(cmd)
     finally:
