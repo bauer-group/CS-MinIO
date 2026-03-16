@@ -1,3 +1,9 @@
+## [0.3.3](https://github.com/bauer-group/CS-MinIO/compare/v0.3.2...v0.3.3) (2026-03-07)
+
+### 🐛 Bug Fixes
+
+* improve error handling in _mc function across multiple task files ([a0cb05e](https://github.com/bauer-group/CS-MinIO/commit/a0cb05e19bba1c51946b0ce77cbb1eb71c3f2313))
+
 ## [0.3.2](https://github.com/bauer-group/CS-MinIO/compare/v0.3.1...v0.3.2) (2026-03-06)
 
 ## [0.3.1](https://github.com/bauer-group/CS-MinIO/compare/v0.3.0...v0.3.1) (2026-02-23)
