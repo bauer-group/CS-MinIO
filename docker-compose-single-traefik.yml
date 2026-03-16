@@ -143,8 +143,6 @@ services:
       - TZ=${TIME_ZONE:-Etc/UTC}
       - CONSOLE_MINIO_SERVER=http://minio-server:9000
       - CONSOLE_MINIO_REGION=${MINIO_REGION:-eu-central-1}
-      - CONSOLE_ACCESS_KEY=${CONSOLE_USER:-console-admin}
-      - CONSOLE_SECRET_KEY=${CONSOLE_PASSWORD:-console-admin}
     expose:
       - 9090/tcp
     depends_on:
