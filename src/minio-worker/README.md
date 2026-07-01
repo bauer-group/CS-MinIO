@@ -93,7 +93,7 @@ The worker is off by default. To enable CDN cache purge for the stack:
 | `HUEY_BACKEND` | no | `sqlite` | `sqlite` (in-container) or `redis` (scale-out). |
 | `REDIS_URL` | if redis | — | e.g. `redis://redis:6379/0`. |
 | `WORKER_MODE` | no | `receiver` | `receiver` or `consumer` — selects the role (compose sets it per service). |
-| `WORKER_CONCURRENCY` | no | `4` | Consumer worker threads (the entrypoint passes this to `huey_consumer -w`). |
+| `WORKER_CONCURRENCY` | no | `4` | Consumer worker threads (`main.py` passes this to the in-process Huey consumer). |
 | `MAX_RETRIES` | no | `10` | Attempts before dead-letter. |
 | `RETRY_BASE_SECONDS` / `RETRY_MAX_SECONDS` | no | `2` / `300` | Exponential backoff base / cap. |
 | `BATCH_SIZE` | no | `30` | Max URLs per Cloudflare purge call. |

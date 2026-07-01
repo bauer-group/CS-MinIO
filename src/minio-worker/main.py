@@ -14,9 +14,21 @@ import sys
 
 
 def _run_consumer():
-    workers = os.environ.get("WORKER_CONCURRENCY", "4")
-    # Replace this process with the Huey consumer (tini stays PID 1 and reaps it).
-    os.execvp("huey_consumer", ["huey_consumer", "tasks.huey", "-w", str(workers), "-k", "thread"])
+    # Launch Huey in-process rather than execvp'ing the `huey_consumer` script.
+    # That script calls ConsumerConfig.setup_logger(), which unconditionally attaches a
+    # SECOND, unfiltered StreamHandler to the "huey" logger — bypassing the redaction +
+    # heartbeat filters on our root RichHandler and double-printing every framework line.
+    # By running the consumer ourselves and skipping setup_logger, huey's records simply
+    # propagate to the root handler (single format, filters applied). The consumer installs
+    # its own SIGTERM/SIGINT handlers, so container stop still shuts down gracefully.
+    from huey.consumer_options import ConsumerConfig
+
+    import tasks  # noqa: F401 — installs root logging (filters) + validates config (fail-fast)
+
+    workers = int(os.environ.get("WORKER_CONCURRENCY", "4"))
+    config = ConsumerConfig(workers=workers, worker_type="thread")
+    config.validate()
+    tasks.huey.create_consumer(**config.values).run()
 
 
 def _run_receiver() -> int:
@@ -48,7 +60,7 @@ def _run_receiver() -> int:
 def main() -> int:
     mode = os.environ.get("WORKER_MODE", "receiver").strip().lower()
     if mode == "consumer":
-        _run_consumer()  # execvp -> replaces the process, does not return
+        _run_consumer()  # blocks until the consumer shuts down (SIGTERM/SIGINT)
         return 0
     return _run_receiver()
 

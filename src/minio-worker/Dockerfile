@@ -37,7 +37,7 @@ LABEL org.opencontainers.image.version="0.8.0"
 # Environment
 # ---------------------------------------------------------------------------
 ENV PYTHONUNBUFFERED=1
-# Ensure `huey_consumer tasks.huey` (a console script) can import the app modules.
+# Ensure main.py can import the app modules (tasks, config, providers, ...).
 ENV PYTHONPATH=/app
 
 # ---------------------------------------------------------------------------
