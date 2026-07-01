@@ -122,8 +122,12 @@ must create the credentials below. The URL it purges is `{PUBLIC_BASE_URL}/{buck
 ### Cloudflare
 
 1. **Serve MinIO through Cloudflare** — point the public hostname (e.g. `assets.example.com`)
-   at your MinIO origin with the DNS record **proxied** (orange cloud), and add a **Cache Rule**
-   with a long **Edge TTL** so caching is worth purging.
+   at your MinIO origin with the DNS record **proxied** (orange cloud). Under **Caching → Cache
+   Rules**, add a rule that **overrides both TTLs**:
+   - **Edge TTL → Override to** a **long** value, e.g. **1 day** — safe because the worker
+     purges the edge on every change;
+   - **Browser TTL → Override to** a **short** value, **≤ 5 minutes** — browsers can't be
+     purged, so they must expire on their own.
 2. **API token** → `CF_PURGE_API_TOKEN` (least privilege): **My Profile → API Tokens → Create
    Token**; use the **"Purge Cache"** template, or a custom token with **Permissions: Zone ·
    Cache Purge · Purge** and **Zone Resources · Include · your zone**. Copy it (shown once).
@@ -134,15 +138,27 @@ must create the credentials below. The URL it purges is `{PUBLIC_BASE_URL}/{buck
 
 1. **Serve MinIO through a Bunny Pull Zone** — create a Pull Zone whose Origin is your MinIO
    endpoint, and use its hostname as `S3_PUBLIC_BASE_URL` (or the per-provider
-   `BUNNY_PUBLIC_BASE_URL`).
+   `BUNNY_PUBLIC_BASE_URL`). Set a **long edge Cache Expiration** (e.g. 1 day) and keep the
+   **browser** `Cache-Control` **max-age ≤ 5 minutes** (from the object headers, or override it
+   in the Pull Zone).
 2. **Account API key** → `BUNNY_API_KEY`: dashboard → **profile menu (top-right) → Account
    Settings → API Key** (`https://dash.bunny.net/account/api-key`). This is the **account-level**
    key sent as the `AccessKey` header — the per-URL purge endpoint needs it, not a pull-zone key.
 3. **Wildcard purge** (for `BUNNY_WILDCARD_THRESHOLD`): Bunny's URL purge supports `…/prefix/*`
    with no extra setup.
 
-> Purge invalidates the **edge**, not browsers — pair a long CDN Edge TTL with a short browser
-> `Cache-Control` max-age (~60s) so clients refresh quickly too.
+### TTL strategy
+
+Run a **long edge TTL** (e.g. **1 day**) so almost every request is served from cache, and a
+**short browser TTL** (**≤ 5 minutes**) so viewers recover quickly. This is safe *only because*
+the worker purges: a change invalidates the **edge instantly**, and the browser TTL is the only
+staleness a viewer can still see — bounded to a few minutes. **Browsers cannot be purged, so
+never give them a long TTL.**
+
+| Layer | TTL | Why |
+| ----- | --- | --- |
+| CDN edge | **long** (e.g. 1 day) | Purged on every object change → always fresh. |
+| Browser | **short** (≤ 5 min) | Can't be purged → must expire on its own. |
 
 ## Scaling
 
