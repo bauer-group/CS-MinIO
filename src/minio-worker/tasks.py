@@ -19,10 +19,11 @@ call covers 30 URLs instead of 30 calls, and a Bunny wildcard covers a whole pre
 import json
 import os
 import random
+import socket
 import time
 
 import httpx
-from huey import RedisHuey, SqliteHuey
+from huey import RedisHuey, SqliteHuey, crontab
 
 from config import load_config
 from log import setup_logging
@@ -147,7 +148,8 @@ def flush(provider_name: str):
     due = _outbox.due(provider_name, now, cfg.batch_size * _FLUSH_MAX_BATCHES)
     if due:
         units = _build_units(provider_name, due)
-        for unit_batch in _chunks(units, max(1, provider.batch_limit)):
+        limit = max(1, min(provider.batch_limit, cfg.batch_size))  # CF caps at 30; BATCH_SIZE may lower it
+        for unit_batch in _chunks(units, limit):
             purge_urls = [pu for (pu, _cov) in unit_batch]
             covered = [item for (_pu, cov) in unit_batch for item in cov]  # [(url, attempts)]
             _buckets[provider_name].take(1)
@@ -176,3 +178,18 @@ def flush(provider_name: str):
     # Reschedule (single-flight via the flag) while anything remains: due leftovers or backoff.
     if _outbox.has_pending(provider_name) and _outbox.mark_flush(provider_name):
         flush.schedule(args=(provider_name,), delay=cfg.batch_wait_ms / 1000.0)
+
+
+@huey.periodic_task(crontab(minute="*"))
+def heartbeat():
+    """Refresh a per-container liveness marker for the consumer's healthcheck.
+
+    Runs only on the consumer (periodic tasks fire in ``huey_consumer``). A stale file
+    means the consumer died or hung, which the container healthcheck reports as unhealthy.
+    """
+    try:
+        path = os.path.join(cfg.queue_dir, f"consumer.alive.{socket.gethostname()}")
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(str(time.time()))
+    except OSError:
+        pass

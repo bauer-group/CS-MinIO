@@ -145,9 +145,10 @@ receiver.
 ## Operations & troubleshooting
 
 - **Two services:** `<STACK>_WORKER` (receiver) and `<STACK>_WORKER_CONSUMER` (consumer).
-- **Health:** `GET /healthz` / `/readyz` on the receiver
+- **Health:** the receiver exposes `GET /healthz` / `/readyz`
   (`docker exec <STACK>_WORKER curl -sf http://localhost:8080/healthz`). The consumer has no
-  HTTP; check `docker logs <STACK>_WORKER_CONSUMER`.
+  HTTP; its container healthcheck watches a per-minute heartbeat file it refreshes
+  (`QUEUE_DIR/consumer.alive.<host>`), so a hung or dead consumer is reported unhealthy.
 - **Confirm a purge:** change an object, then look for `purged N object(s) via <provider>` in
   the **consumer** logs; a following `curl -I <public-url>` should show fresh content.
 - **Queue / dead-letters:** Huey uses `QUEUE_DIR/huey.db` and the coalescing buffer is

@@ -74,6 +74,7 @@ x-worker-common: &worker-common
     - QUEUE_DIR=/data/queue
     - LOG_LEVEL=${WORKER_LOG_LEVEL:-INFO}
     # Batching: coalesce URLs into fewer CDN calls (Cloudflare <=30/call; Bunny wildcard)
+    - BATCH_SIZE=${BATCH_SIZE:-30}
     - BATCH_WAIT_MS=${BATCH_WAIT_MS:-500}
     - BUNNY_WILDCARD_THRESHOLD=${BUNNY_WILDCARD_THRESHOLD:-0}
     # Broker: sqlite (in-container) now; set redis + REDIS_URL to scale out later
@@ -195,7 +196,12 @@ services:
     container_name: ${STACK_NAME:-s3-app}_WORKER_CONSUMER
     command: ["huey_consumer", "tasks.huey", "-w", "${WORKER_CONCURRENCY:-4}", "-k", "thread"]
     healthcheck:
-      disable: true
+      # no HTTP endpoint; check the heartbeat file the consumer refreshes every minute
+      test: ["CMD-SHELL", "test $$(( $$(date +%s) - $$(stat -c %Y /data/queue/consumer.alive.$$(hostname) 2>/dev/null || echo 0) )) -lt 180"]
+      interval: 60s
+      timeout: 5s
+      retries: 3
+      start_period: 120s
 
 
 ### Volumes ###
