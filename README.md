@@ -2,7 +2,7 @@
 
 Production-ready [MinIO](https://min.io/) S3-compatible object storage deployment with declarative JSON-based initialization, admin console, and full CI/CD automation.
 
-All three components (MinIO server, init container, admin console) are built from source using private forks for security patches and customization.
+The three core components (MinIO server, init container, admin console) are built from source using private forks for security patches and customization. An optional [`minio-worker`](#optional-cdn-cache-purging-worker) helper (in-repo, off by default) adds webhook-driven jobs such as CDN cache purging.
 
 ## Features
 
@@ -83,6 +83,8 @@ All three components (MinIO server, init container, admin console) are built fro
 │                     Internal Network                     │
 └──────────────────────────────────────────────────────────┘
 ```
+
+> The three boxes above are the always-on core. An optional **`minio-worker`** container (Compose profile `worker`, on the same internal network) can be enabled for webhook-driven jobs such as CDN cache purging — see [Optional: CDN Cache Purging](#optional-cdn-cache-purging-worker).
 
 ## Deployment Modes
 
@@ -209,7 +211,7 @@ The core images are built from source using private forks; the optional worker i
 | ---------- | ------- |
 | `golang:1.26-alpine` | MinIO server, mc client, console backend |
 | `node:22-alpine` | Console frontend (React/TypeScript) |
-| `python:3.14-alpine` | Init container runtime |
+| `python:3.14-alpine` | Init container and worker runtime |
 | `alpine:3.23` | Server and console runtime stages |
 
 ## Traefik Integration
@@ -301,7 +303,7 @@ The repository uses [semantic-release](https://github.com/semantic-release/seman
 
 1. Push to `main` triggers validation (compose files)
 2. Semantic release creates version tag and GitHub release
-3. All three Docker images are built and pushed to GHCR and Docker Hub
+3. All four Docker images (server, init, console, worker) are built and pushed to GHCR and Docker Hub
 4. Dependabot monitors base images weekly; auto-merges updates
 5. Daily base image monitor checks for new releases
 
