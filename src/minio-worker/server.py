@@ -1,7 +1,9 @@
 """HTTP receiver (Flask): authenticate webhooks, translate, enqueue Huey tasks, respond fast.
 
 Contract with MinIO:
-  - ``Authorization`` header carries the raw shared secret (NOT ``Bearer``); mismatch -> 401.
+  - ``Authorization`` header carries the shared secret; mismatch -> 401. MinIO prepends
+    ``Bearer `` to a single-word ``auth_token`` before sending, so we accept both the raw
+    token and the ``Bearer <token>`` form.
   - Return 200 immediately after enqueue (the consumer does the slow CDN work).
   - 4xx only for auth/parse errors (so MinIO drops poison messages); a broker/enqueue
     failure -> 503 so MinIO's own queue_dir retains + retries.
@@ -21,8 +23,12 @@ def create_app(cfg, ctx, handlers, log):
     app = Flask(__name__)
 
     def _authorized() -> bool:
+        if not cfg.webhook_auth_token:
+            return False
         presented = request.headers.get("Authorization", "")
-        return bool(cfg.webhook_auth_token) and hmac.compare_digest(presented, cfg.webhook_auth_token)
+        # MinIO sends a single-word auth_token as "Bearer <token>"; accept both forms.
+        presented = presented.removeprefix("Bearer ")
+        return hmac.compare_digest(presented, cfg.webhook_auth_token)
 
     @app.post("/webhook")
     @app.post("/webhook/<source>")

@@ -53,7 +53,8 @@ The worker is off by default. To enable CDN cache purge for the stack:
 ```
 
 - **Receiver** (`server.py` + `main.py`): authenticates each request against
-  `WEBHOOK_AUTH_TOKEN` (raw `Authorization`, not `Bearer`), routes to a handler, **buffers**
+  `WEBHOOK_AUTH_TOKEN` (accepts both the raw `Authorization` value and the `Bearer <token>`
+  form MinIO sends for a single-word token), routes to a handler, **buffers**
   the changed-object URLs into a durable per-provider outbox, and schedules a debounced
   `flush`. Returns `200` fast; `4xx` only for auth/parse errors (so MinIO drops poison
   messages) and `503` on enqueue failure (so MinIO's own `queue_dir` retries).
@@ -80,7 +81,7 @@ The worker is off by default. To enable CDN cache purge for the stack:
 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
-| `WEBHOOK_AUTH_TOKEN` | **yes** | — | Shared secret; MinIO sends it as the raw `Authorization` header. Masked in logs. |
+| `WEBHOOK_AUTH_TOKEN` | **yes** | — | Shared secret. MinIO sends a single-word token as `Authorization: Bearer <token>`; the receiver accepts both that and the raw value. Masked in logs. |
 | `PUBLIC_BASE_URL` | yes\* | — | e.g. `https://assets.example.com`. Base for path-style purge URLs. |
 | `CF_API_TOKEN` | for CF | — | Cloudflare token, scope **Zone → Cache Purge** only. Masked. |
 | `CF_ZONE_ID` | for CF | — | Cloudflare zone id. |
