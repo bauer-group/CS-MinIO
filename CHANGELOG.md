@@ -1,3 +1,5 @@
+## [0.7.1](https://github.com/bauer-group/CS-MinIO/compare/v0.7.0...v0.7.1) (2026-07-01)
+
 ## [0.7.0](https://github.com/bauer-group/CS-MinIO/compare/v0.6.1...v0.7.0) (2026-07-01)
 
 ## [0.6.1](https://github.com/bauer-group/CS-MinIO/compare/v0.6.0...v0.6.1) (2026-07-01)
