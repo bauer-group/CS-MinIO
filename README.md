@@ -13,6 +13,7 @@ The three core components (MinIO server, init container, admin console) are buil
   - **IAM Policies** as fine-grained S3 policy documents (create or update)
   - **Users & Groups** with automatic group membership and direct policy attachment
   - **Service Accounts** with dynamic server-generated credentials, written as JSON files to a shared volume for consumption by other containers
+  - **Notifications** as webhook targets with bucket/event bindings (e.g. to trigger CDN cache purging via the optional worker)
   - **Environment Variable Resolution** - `${VAR_NAME}` syntax in JSON values keeps secrets out of config files
   - **Fully Idempotent** - Runs on every container start; safely skips already-existing resources
   - **Two-Layer Config** - Built-in defaults (admin policy, group, console user) + user-provided config, both processed independently
@@ -119,7 +120,7 @@ openssl rand -base64 24
 The init container processes two configuration files in order:
 
 1. **Built-in default** (baked into image) - Creates `pAdministrators` policy, `gAdministrators` group, and console user with full admin rights from `CONSOLE_USER`/`CONSOLE_PASSWORD` environment variables
-2. **User config** (mounted) - Your custom buckets, policies, users, service accounts
+2. **User config** (mounted) - Your custom buckets, policies, users, service accounts, notifications
 
 All operations are idempotent. The init container runs on every start.
 
@@ -132,6 +133,7 @@ All operations are idempotent. The init container runs on every start.
 | `groups`           | Create groups and attach policies                                                    |
 | `users`            | Create users, assign to groups, attach direct policies                               |
 | `service_accounts` | Create service accounts with dynamic server-generated credentials                    |
+| `notifications`    | Configure webhook targets and bucket/event bindings (e.g. CDN cache purge)           |
 
 **Environment variable resolution:** JSON values support `${VAR_NAME}` syntax. Variables are resolved from the container's environment at runtime, keeping secrets out of config files.
 
@@ -173,6 +175,16 @@ All operations are idempotent. The init container runs on every start.
       "user": "${APP_USER}",
       "name": "app-worker",
       "description": "Worker service account"
+    }
+  ],
+  "notifications": [
+    {
+      "id": "cdnpurge",
+      "type": "webhook",
+      "endpoint": "http://minio-worker:8080/webhook",
+      "auth_token": "${WEBHOOK_AUTH_TOKEN}",
+      "buckets": ["public-assets"],
+      "events": ["put", "delete"]
     }
   ]
 }
