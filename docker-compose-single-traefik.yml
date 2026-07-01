@@ -59,6 +59,38 @@ x-minio-common: &minio-common
     local:
 
 
+### Worker Template (optional) ###
+x-worker-common: &worker-common
+  profiles: [ "worker" ]
+  image: ${WORKER_IMAGE:-ghcr.io/bauer-group/cs-minio/minio-worker}:${WORKER_VERSION:-latest}
+  restart: unless-stopped
+  logging:
+    driver: json-file
+    options:
+      max-size: "50m"
+      max-file: "3"
+  environment:
+    - TZ=${TIME_ZONE:-Etc/UTC}
+    - WEBHOOK_AUTH_TOKEN=${WEBHOOK_AUTH_TOKEN:-}
+    - PUBLIC_BASE_URL=${S3_PUBLIC_BASE_URL:-}
+    # Cloudflare (auto-enabled when both are set) / Bunny (auto-enabled when set)
+    - CF_API_TOKEN=${CF_PURGE_API_TOKEN:-}
+    - CF_ZONE_ID=${CF_ZONE_ID:-}
+    - BUNNY_API_KEY=${BUNNY_API_KEY:-}
+    - QUEUE_DIR=/data/queue
+    - LOG_LEVEL=${WORKER_LOG_LEVEL:-INFO}
+    # Broker: sqlite (in-container) now; set redis + REDIS_URL to scale out later
+    - HUEY_BACKEND=${HUEY_BACKEND:-sqlite}
+    - REDIS_URL=${REDIS_URL:-}
+  volumes:
+    - minio-worker-queue:/data/queue
+  depends_on:
+    minio-server:
+      condition: service_healthy
+  networks:
+    local:
+
+
 services:
 ### Application Services ###
   # MinIO S3 Server
@@ -205,46 +237,29 @@ services:
 
 
 ### Worker (optional - Compose profile: worker) ###
-  # Generic webhook-driven worker. Current job: CDN cache purge (Cloudflare + Bunny).
-  # Enable with: COMPOSE_PROFILES=worker   (see .env.example)
+  # Generic webhook-driven worker = receiver (HTTP) + consumer (huey). Current job:
+  # CDN cache purge (Cloudflare + Bunny). Enable with COMPOSE_PROFILES=worker (see .env.example).
   # Not publicly exposed: only reachable in-network from minio-server, egress to CDN APIs.
   minio-worker:
-    profiles: [ "worker" ]
-    image: ${WORKER_IMAGE:-ghcr.io/bauer-group/cs-minio/minio-worker}:${WORKER_VERSION:-latest}
+    <<: *worker-common
     container_name: ${STACK_NAME:-s3-app}_WORKER
     hostname: minio-worker
-    restart: unless-stopped
-    logging:
-      driver: json-file
-      options:
-        max-size: "50m"
-        max-file: "3"
-    environment:
-      - TZ=${TIME_ZONE:-Etc/UTC}
-      - WEBHOOK_AUTH_TOKEN=${WEBHOOK_AUTH_TOKEN:-}
-      - PUBLIC_BASE_URL=${S3_PUBLIC_BASE_URL:-}
-      # Cloudflare (auto-enabled when both are set)
-      - CF_API_TOKEN=${CF_PURGE_API_TOKEN:-}
-      - CF_ZONE_ID=${CF_ZONE_ID:-}
-      # Bunny CDN (auto-enabled when set)
-      - BUNNY_API_KEY=${BUNNY_API_KEY:-}
-      - QUEUE_DIR=/data/queue
-      - LOG_LEVEL=${WORKER_LOG_LEVEL:-INFO}
-    volumes:
-      - minio-worker-queue:/data/queue
     expose:
       - 8080/tcp
-    depends_on:
-      minio-server:
-        condition: service_healthy
-    networks:
-      local:
     healthcheck:
       test: ["CMD", "curl", "-sf", "http://localhost:8080/healthz"]
       interval: 30s
       timeout: 5s
       retries: 3
       start_period: 10s
+
+  # Huey consumer: drains the queue and calls the CDN purge APIs.
+  minio-worker-consumer:
+    <<: *worker-common
+    container_name: ${STACK_NAME:-s3-app}_WORKER_CONSUMER
+    command: ["huey_consumer", "tasks.huey", "-w", "${WORKER_CONCURRENCY:-4}", "-k", "thread"]
+    healthcheck:
+      disable: true
 
 
 ### Volumes ###

@@ -29,9 +29,9 @@ class Config:
     max_retries: int
     retry_base_seconds: float
     retry_max_seconds: float
-    batch_size: int
-    batch_wait_ms: int
     log_level: str
+    huey_backend: str          # "sqlite" (in-container) | "redis" (scale-out)
+    redis_url: str             # used when huey_backend == "redis"
     cf_api_token: str
     cf_zone_id: str
     bunny_api_key: str
@@ -89,9 +89,9 @@ def load_config() -> Config:
         max_retries=int(_get("MAX_RETRIES", "10")),
         retry_base_seconds=float(_get("RETRY_BASE_SECONDS", "2")),
         retry_max_seconds=float(_get("RETRY_MAX_SECONDS", "300")),
-        batch_size=int(_get("BATCH_SIZE", "30")),
-        batch_wait_ms=int(_get("BATCH_WAIT_MS", "500")),
         log_level=(_get("LOG_LEVEL", "INFO") or "INFO").upper(),
+        huey_backend=(_get("HUEY_BACKEND", "sqlite") or "sqlite").lower(),
+        redis_url=_get("REDIS_URL", "") or "",
         cf_api_token=_get("CF_API_TOKEN", "") or "",
         cf_zone_id=_get("CF_ZONE_ID", "") or "",
         bunny_api_key=_get("BUNNY_API_KEY", "") or "",

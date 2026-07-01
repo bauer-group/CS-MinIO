@@ -7,7 +7,6 @@ URL is resolved per-provider later (in the worker), so Cloudflare and Bunny can 
 different hostnames.
 """
 
-import time
 from urllib.parse import quote, unquote
 
 SOURCE = "minio"
@@ -26,8 +25,12 @@ def _records(payload):
 
 
 def handle(payload, ctx) -> list:
+    """Translate a MinIO event body into purge jobs (one per changed object).
+
+    Each job carries the object path + bucket + the providers to purge; the receiver
+    enqueues one Huey task per (job, provider). Retry state lives in Huey, not here.
+    """
     jobs = []
-    now = time.time()
     for rec in _records(payload):
         if not isinstance(rec, dict):
             continue
@@ -41,12 +44,8 @@ def handle(payload, ctx) -> list:
             continue
         key = unquote(raw_key)  # MinIO sends the object key URL-encoded
         jobs.append({
-            "action": "purge_url",
             "path": f"{bucket}/{quote(key)}",
             "bucket": bucket,
             "providers": list(ctx.enabled_providers),
-            "attempts": 0,
-            "next_try_ts": 0.0,
-            "created_ts": now,
         })
     return jobs

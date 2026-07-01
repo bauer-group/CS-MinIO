@@ -37,6 +37,8 @@ LABEL org.opencontainers.image.version="0.4.0"
 # Environment
 # ---------------------------------------------------------------------------
 ENV PYTHONUNBUFFERED=1
+# Ensure `huey_consumer tasks.huey` (a console script) can import the app modules.
+ENV PYTHONPATH=/app
 
 # ---------------------------------------------------------------------------
 # Dependencies
@@ -74,4 +76,6 @@ EXPOSE 8080
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
     CMD curl -sf http://localhost:8080/healthz || exit 1
 
-ENTRYPOINT ["/sbin/tini", "--", "python", "main.py"]
+# Receiver by default; the consumer service overrides `command` with huey_consumer.
+ENTRYPOINT ["/sbin/tini", "--"]
+CMD ["python", "main.py"]
