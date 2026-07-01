@@ -34,11 +34,17 @@ Idempotency (critical):
   - Registering/altering a notify_webhook TARGET requires `mc admin service restart`.
     MinIO masks the auth_token in `mc admin config get`, so we cannot diff it directly.
     Instead we persist a hash of the desired target config to a marker file on the
-    credentials volume and restart ONLY when that hash changes AND when the target is
-    actually present on the server. Running init twice unchanged -> no restart.
+    credentials volume. We skip the restart when that hash matches AND the target's ARN is
+    already active on the running server (`mc admin info` -> `info.sqsARN`); otherwise we
+    (re)apply and restart once. Targets persist across restarts, so steady state is no-op.
   - Event BINDINGS never require a restart. `mc event add` uses short event names
     (put/delete) but `mc event ls` reports full names (s3:ObjectCreated:*), so we map
     short -> full before comparing to avoid re-adding an existing binding.
+  - The ARN passed to `mc event add` / compared against `mc event ls` must be the server's
+    EXACT string. MinIO qualifies target ARNs with the server region
+    (`arn:minio:sqs:<region>:<id>:webhook`), so a hardcoded empty-region ARN fails with
+    "Unable to enable notification on the specified bucket" once MINIO_SITE_REGION is set,
+    even though the target is registered. We resolve the real ARN from `info.sqsARN`.
   - Additive only: bindings not present in the config are left untouched (like lifecycle).
 """
 
@@ -144,16 +150,69 @@ def _write_marker(target_id: str, digest: str, console) -> None:
 
 
 def _target_exists(target_id: str) -> bool:
-    """True if the notify_webhook target is actually present (has an endpoint) on the server.
+    """True if the notify_webhook target is present (has an endpoint) in persisted config.
 
-    Guards against a marker that survived a MinIO data reset (credentials and data are
-    separate volumes) - without this, a stale-but-matching marker would skip re-creating
-    a target that no longer exists, and the later `mc event add` would fail.
+    Fallback only, used when the runtime ARN list is unavailable (see `_active_arns`).
     """
     res = _mc(["admin", "config", "get", MC_ALIAS, f"notify_webhook:{target_id}"], use_json=False)
     if res.returncode != 0:
         return False
     return bool(re.search(r'endpoint="?([^"\s]+)', res.stdout or ""))
+
+
+def _active_arns() -> set | None:
+    """Notification target ARNs the *running* server has loaded, or None if undeterminable.
+
+    Reads `mc admin info`'s `info.sqsARN`. That list reflects runtime state: a
+    notify_webhook target set via `config set` does NOT appear until `service restart`,
+    and `mc event add` accepts an ARN only once it is here. The field carries `omitempty`,
+    so an absent/empty list legitimately means "no active targets" (a valid negative — we
+    must NOT fall back to persisted config in that case, or we'd skip the needed restart).
+    Returns None only when the admin-info call itself fails.
+    """
+    res = _mc(["admin", "info", MC_ALIAS])
+    if res.returncode != 0:
+        return None
+    arns = set()
+    for data in _iter_json(res.stdout):
+        if not isinstance(data, dict):
+            continue
+        for container in (data, data.get("info", {})):
+            if isinstance(container, dict):
+                for arn in (container.get("sqsARN") or []):
+                    if arn:
+                        arns.add(arn)
+    return arns
+
+
+def _find_arn(target_id: str, active: set | None) -> str | None:
+    """The server's exact webhook ARN for `target_id`, matched region-agnostically.
+
+    MinIO qualifies notification ARNs with the server region:
+    ``arn:minio:sqs:<region>:<id>:webhook`` (empty region when MINIO_SITE_REGION is unset).
+    We must feed `mc event add` the server's *exact* string — a hardcoded empty-region ARN
+    fails with "Unable to enable notification on the specified bucket" whenever a region is
+    configured, even though the target is registered. So we match on the id/type segments
+    instead of guessing the region. Returns None if the target isn't in the active list.
+    """
+    if not active:
+        return None
+    for arn in active:
+        parts = arn.split(":")  # arn : minio : sqs : <region> : <id> : <type>
+        if len(parts) == 6 and parts[4] == target_id and parts[5] == "webhook":
+            return arn
+    return None
+
+
+def _target_active(target_id: str, active: set | None) -> bool:
+    """Whether the target's webhook ARN is loaded on the running server.
+
+    Uses the runtime ARN list when available; falls back to persisted-config presence
+    only when `mc admin info` could not be read.
+    """
+    if active is None:
+        return _target_exists(target_id)
+    return _find_arn(target_id, active) is not None
 
 
 def _to_full(events: list) -> set:
@@ -224,6 +283,7 @@ def run(items: list, console, **kwargs) -> dict:
     valid = []
 
     # --- Phase 1: Targets (may require a single restart) ---
+    active = _active_arns()  # runtime ARN list; source of truth for "already active"
     for entry in items:
         target_id = entry.get("id", "")
         if not re.fullmatch(r"[A-Za-z0-9_-]+", target_id or ""):
@@ -239,7 +299,7 @@ def run(items: list, console, **kwargs) -> dict:
         kv = _desired_kv(entry)
         digest = _hash(target_id, kv)
 
-        if _read_marker(target_id) == digest and _target_exists(target_id):
+        if _read_marker(target_id) == digest and _target_active(target_id, active):
             console.print(f"    [dim]Target unchanged: {target_id}[/]")
             continue
 
@@ -269,11 +329,14 @@ def run(items: list, console, **kwargs) -> dict:
                 "changed": True,
                 "message": f"{targets_set} target(s) set, restart health-check timed out",
             }
+        active = _active_arns()  # refresh: newly-applied targets now carry their ARN
 
     # --- Phase 2: Event bindings (no restart, idempotent, additive) ---
     for entry in valid:
         target_id = entry["id"]
-        arn = f"arn:minio:sqs::{target_id}:webhook"
+        # Use the server's exact (region-qualified) ARN; the empty-region fallback only
+        # applies if admin-info was unavailable, matching MinIO's default no-region format.
+        arn = _find_arn(target_id, active) or f"arn:minio:sqs::{target_id}:webhook"
         events = entry.get("events", ["put", "delete"])
         prefix = entry.get("prefix", "")
         suffix = entry.get("suffix", "")
