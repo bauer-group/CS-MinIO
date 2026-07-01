@@ -31,7 +31,7 @@ LABEL org.opencontainers.image.licenses="MIT"
 LABEL org.opencontainers.image.source="https://github.com/bauer-group/CS-MinIO"
 LABEL org.opencontainers.image.url="https://github.com/bauer-group/CS-MinIO"
 LABEL org.opencontainers.image.documentation="https://github.com/bauer-group/CS-MinIO#readme"
-LABEL org.opencontainers.image.version="0.3.13"
+LABEL org.opencontainers.image.version="0.4.0"
 
 # ---------------------------------------------------------------------------
 # Environment
