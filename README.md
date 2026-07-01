@@ -204,6 +204,8 @@ It is **disabled by default** and gated behind the Docker Compose `worker` profi
 2. Add a `notifications` block to your init config so MinIO forwards object events to the worker (see [src/minio-init/README.md](src/minio-init/README.md)).
 3. Start any deployment mode as usual.
 
+> **Configuring the CDN side** — API tokens, zone ID, and serving MinIO through Cloudflare/Bunny: see [Provider setup](src/minio-worker/README.md#provider-setup-get-your-credentials).
+
 The worker is generic (a small plugin framework); CDN purge is its first job. See [src/minio-worker/README.md](src/minio-worker/README.md).
 
 ## Docker Images

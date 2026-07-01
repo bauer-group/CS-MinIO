@@ -113,6 +113,37 @@ no base URL is available.
 Purge is idempotent, so delivery is at-least-once (a crash between "purged" and "acked"
 merely re-purges — harmless).
 
+## Provider setup (get your credentials)
+
+The worker only *calls* the purge APIs — the CDN itself must serve your objects, and you
+must create the credentials below. The URL it purges is `{PUBLIC_BASE_URL}/{bucket}/{key}`
+(path-style), so the CDN has to front MinIO at that hostname.
+
+### Cloudflare
+
+1. **Serve MinIO through Cloudflare** — point the public hostname (e.g. `assets.example.com`)
+   at your MinIO origin with the DNS record **proxied** (orange cloud), and add a **Cache Rule**
+   with a long **Edge TTL** so caching is worth purging.
+2. **API token** → `CF_PURGE_API_TOKEN` (least privilege): **My Profile → API Tokens → Create
+   Token**; use the **"Purge Cache"** template, or a custom token with **Permissions: Zone ·
+   Cache Purge · Purge** and **Zone Resources · Include · your zone**. Copy it (shown once).
+3. **Zone ID** → `CF_ZONE_ID`: open the domain in the dashboard → **Overview** → scroll to the
+   **API** section (bottom of the right sidebar) → copy the **Zone ID**.
+
+### Bunny
+
+1. **Serve MinIO through a Bunny Pull Zone** — create a Pull Zone whose Origin is your MinIO
+   endpoint, and use its hostname as `S3_PUBLIC_BASE_URL` (or the per-provider
+   `BUNNY_PUBLIC_BASE_URL`).
+2. **Account API key** → `BUNNY_API_KEY`: dashboard → **profile menu (top-right) → Account
+   Settings → API Key** (`https://dash.bunny.net/account/api-key`). This is the **account-level**
+   key sent as the `AccessKey` header — the per-URL purge endpoint needs it, not a pull-zone key.
+3. **Wildcard purge** (for `BUNNY_WILDCARD_THRESHOLD`): Bunny's URL purge supports `…/prefix/*`
+   with no extra setup.
+
+> Purge invalidates the **edge**, not browsers — pair a long CDN Edge TTL with a short browser
+> `Cache-Control` max-age (~60s) so clients refresh quickly too.
+
 ## Scaling
 
 - **SQLite (default)** keeps everything self-contained: the receiver and consumer share the
