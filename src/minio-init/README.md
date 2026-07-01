@@ -197,8 +197,12 @@ restart, which the task performs automatically and then waits for health. It res
 `/data/credentials/.notifications/`), so re-running with unchanged config causes no
 restart. Event *bindings* never require a restart and are additive (not removed).
 
+**Bundled example:** [`config/minio-init.example.json`](../../config/minio-init.example.json)
+ships a ready-to-use `cdnpurge` entry (scoped to the `public-assets` bucket).
+
 **Prerequisite:** the `minio-worker` container must be enabled (Compose profile `worker`)
-to receive these webhooks. See [src/minio-worker/README.md](../minio-worker/README.md).
+and given CDN credentials to receive and act on these webhooks. See
+[src/minio-worker/README.md](../minio-worker/README.md).
 
 ## Task Reference
 

@@ -152,5 +152,19 @@
       "description": "Automated backup agent",
       "policy": "pBackupsWriteOnly"
     }
+  ],
+  "notifications": [
+    {
+      "id": "cdnpurge",
+      "type": "webhook",
+      "endpoint": "http://minio-worker:8080/webhook",
+      "auth_token": "${WEBHOOK_AUTH_TOKEN}",
+      "queue_dir": "/data/.minio-events",
+      "queue_limit": 100000,
+      "buckets": ["public-assets"],
+      "events": ["put", "delete"],
+      "prefix": "",
+      "suffix": ""
+    }
   ]
 }

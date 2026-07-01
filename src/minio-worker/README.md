@@ -13,6 +13,28 @@ profile (`COMPOSE_PROFILES=worker`). See the repo root [README](../../README.md)
 create/delete, so a long CDN edge TTL can be combined with fresh-on-update content. It is
 built as a plugin framework so future webhook-driven jobs are additive.
 
+## Quick start
+
+The worker is off by default. To enable CDN cache purge for the stack:
+
+1. In `.env`, activate the profile and set the required variables:
+
+   ```env
+   COMPOSE_PROFILES=worker
+   WEBHOOK_AUTH_TOKEN=<openssl rand -hex 32>
+   S3_PUBLIC_BASE_URL=https://assets.example.com
+   # A provider auto-enables when its credentials are set (Cloudflare and/or Bunny):
+   CF_PURGE_API_TOKEN=...
+   CF_ZONE_ID=...
+   BUNNY_API_KEY=...
+   ```
+
+2. Add a `notifications` block to your init config so MinIO forwards object events to the
+   worker — see [`config/minio-init.example.json`](../../config/minio-init.example.json)
+   and [the init README](../minio-init/README.md#bucket-notifications).
+
+3. Start the stack as usual; the `minio-worker` service starts with the `worker` profile active.
+
 ## Architecture
 
 ```
@@ -90,6 +112,26 @@ auto-discovers it and enables it when its credentials are present.
 
 A job is a plain dict:
 `{"action", "path", "bucket", "providers", "attempts", "next_try_ts", "created_ts"}`.
+
+## Operations & troubleshooting
+
+- **Health:** `GET /healthz` (liveness) and `/readyz` (queue writable + worker alive). The
+  port is internal to the stack — check with
+  `docker exec <STACK>_WORKER curl -sf http://localhost:8080/healthz`.
+- **Confirm a purge:** change an object, then look for `purged N url(s) via <provider>` in
+  `docker logs <STACK>_WORKER`; a following `curl -I <public-url>` should show fresh content.
+- **Dead-letters:** items that exhaust `MAX_RETRIES` or hit a non-retryable error (e.g. a bad
+  token) are moved to `QUEUE_DIR/dead/` as inspectable JSON and logged at ERROR — never
+  dropped silently. List them with `docker exec <STACK>_WORKER ls -la /data/queue/dead`.
+- **Common issues:**
+  - *Container exits immediately* — a required variable is missing; the startup log names it
+    (`WEBHOOK_AUTH_TOKEN`, a provider, or `PUBLIC_BASE_URL`).
+  - *Every webhook returns 401* — the MinIO target `auth_token` and the worker's
+    `WEBHOOK_AUTH_TOKEN` differ.
+  - *Purges return 401/403* — wrong/insufficient CDN credentials (Cloudflare needs
+    **Zone → Cache Purge**; Bunny needs the **Account API key**).
+  - *Events pile up, nothing purges* — the worker isn't running (profile inactive) or has no
+    egress to the CDN API.
 
 ## License
 
