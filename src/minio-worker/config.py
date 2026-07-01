@@ -29,6 +29,9 @@ class Config:
     max_retries: int
     retry_base_seconds: float
     retry_max_seconds: float
+    batch_size: int            # max URLs per provider call (Cloudflare: <=30)
+    batch_wait_ms: int         # coalesce/flush cadence
+    bunny_wildcard_threshold: int  # >=N same-prefix Bunny URLs -> one wildcard purge (0 = off)
     log_level: str
     huey_backend: str          # "sqlite" (in-container) | "redis" (scale-out)
     redis_url: str             # used when huey_backend == "redis"
@@ -89,6 +92,9 @@ def load_config() -> Config:
         max_retries=int(_get("MAX_RETRIES", "10")),
         retry_base_seconds=float(_get("RETRY_BASE_SECONDS", "2")),
         retry_max_seconds=float(_get("RETRY_MAX_SECONDS", "300")),
+        batch_size=int(_get("BATCH_SIZE", "30")),
+        batch_wait_ms=int(_get("BATCH_WAIT_MS", "500")),
+        bunny_wildcard_threshold=int(_get("BUNNY_WILDCARD_THRESHOLD", "0")),
         log_level=(_get("LOG_LEVEL", "INFO") or "INFO").upper(),
         huey_backend=(_get("HUEY_BACKEND", "sqlite") or "sqlite").lower(),
         redis_url=_get("REDIS_URL", "") or "",

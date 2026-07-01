@@ -63,6 +63,9 @@ x-worker-common: &worker-common
     - BUNNY_API_KEY=${BUNNY_API_KEY:-}
     - QUEUE_DIR=/data/queue
     - LOG_LEVEL=${WORKER_LOG_LEVEL:-INFO}
+    # Batching: coalesce URLs into fewer CDN calls (Cloudflare <=30/call; Bunny wildcard)
+    - BATCH_WAIT_MS=${BATCH_WAIT_MS:-500}
+    - BUNNY_WILDCARD_THRESHOLD=${BUNNY_WILDCARD_THRESHOLD:-0}
     # Broker: sqlite (in-container) now; set redis + REDIS_URL to scale out later
     - HUEY_BACKEND=${HUEY_BACKEND:-sqlite}
     - REDIS_URL=${REDIS_URL:-}

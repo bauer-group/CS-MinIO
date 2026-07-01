@@ -46,20 +46,23 @@ The worker is off by default. To enable CDN cache purge for the stack:
 ## Architecture
 
 ```
- MinIO ──webhook (auth)──▶ receiver ──enqueue──▶ Huey broker ──▶ consumer ──▶ provider(s)
- server                    Flask/waitress        SQLite | Redis  huey_consumer  CF / Bunny
+ MinIO ─webhook─▶ receiver ─buffer─▶ outbox ─flush─▶ consumer ─batched─▶ provider(s)
+ server           Flask/waitress    SQLite          huey_consumer        CF / Bunny
 ```
 
 - **Receiver** (`server.py` + `main.py`): authenticates each request against
-  `WEBHOOK_AUTH_TOKEN` (raw `Authorization`, not `Bearer`), routes to a handler, and
-  enqueues **one `purge` task per (object, provider)**. Returns `200` fast; `4xx` only for
-  auth/parse errors (so MinIO drops poison messages) and `503` on enqueue failure (so
-  MinIO's own `queue_dir` retries).
-- **Broker** (`tasks.py`): Huey backed by SQLite (`QUEUE_DIR/huey.db`, WAL) or Redis.
-- **Consumer** (`huey_consumer tasks.huey`): runs the `purge` task with per-provider rate
-  limiting; on a transient failure it re-enqueues itself with exponential backoff via
-  `purge.schedule(delay=…)` up to `MAX_RETRIES`, then dead-letters. One task per provider
-  means a slow/failing provider never blocks or re-purges the others.
+  `WEBHOOK_AUTH_TOKEN` (raw `Authorization`, not `Bearer`), routes to a handler, **buffers**
+  the changed-object URLs into a durable per-provider outbox, and schedules a debounced
+  `flush`. Returns `200` fast; `4xx` only for auth/parse errors (so MinIO drops poison
+  messages) and `503` on enqueue failure (so MinIO's own `queue_dir` retries).
+- **Outbox** (`outbox.py`): a small SQLite table that coalesces and de-duplicates URLs and
+  holds per-URL retry backoff. Huey (`QUEUE_DIR/huey.db`, WAL, or Redis) carries the `flush`
+  tasks between the two processes.
+- **Consumer** (`huey_consumer tasks.huey`): runs `flush(provider)` — drains due URLs in
+  **batches** (Cloudflare up to `BATCH_SIZE` per call; same-prefix Bunny bursts collapsed
+  into a single wildcard purge), rate-limited per provider, with exponential backoff and
+  dead-lettering. Batching keeps call volume sane at scale (one Cloudflare call covers 30
+  URLs instead of 30 calls).
 - **Providers** (`providers/`) and **handlers** (`handlers/`) are the two extension seams.
 
 ## Endpoints (receiver)
@@ -89,6 +92,9 @@ The worker is off by default. To enable CDN cache purge for the stack:
 | `WORKER_CONCURRENCY` | no | `4` | Consumer worker threads (compose passes this to `huey_consumer -w`). |
 | `MAX_RETRIES` | no | `10` | Attempts before dead-letter. |
 | `RETRY_BASE_SECONDS` / `RETRY_MAX_SECONDS` | no | `2` / `300` | Exponential backoff base / cap. |
+| `BATCH_SIZE` | no | `30` | Max URLs per Cloudflare purge call. |
+| `BATCH_WAIT_MS` | no | `500` | Coalesce window before a flush (higher = more batching). |
+| `BUNNY_WILDCARD_THRESHOLD` | no | `0` | Collapse ≥N same-prefix Bunny purges into one wildcard call (0 = off). |
 | `LOG_LEVEL` | no | `INFO` | `rich` log level. |
 
 \* **Provider auto-enable:** Cloudflare turns on when `CF_API_TOKEN` **and** `CF_ZONE_ID`
@@ -98,9 +104,11 @@ no base URL is available.
 
 ## Provider notes
 
-- **Cloudflare** — `POST /zones/{zone}/purge_cache`, `Authorization: Bearer`, `{"files":[…]}`.
-  Success requires HTTP 200 and `{"success": true}`.
-- **Bunny** — `POST https://api.bunny.net/purge?url=…`, header `AccessKey`, one URL/call.
+- **Cloudflare** — `POST /zones/{zone}/purge_cache`, `Authorization: Bearer`, `{"files":[…]}`,
+  **batched up to 30 URLs per call**. Success requires HTTP 200 and `{"success": true}`.
+- **Bunny** — `POST https://api.bunny.net/purge?url=…`, header `AccessKey`, one URL per call;
+  with `BUNNY_WILDCARD_THRESHOLD` set, same-prefix bursts collapse into one `…/prefix/*` call
+  (which purges the whole prefix at the edge — may evict unchanged objects too).
 
 Purge is idempotent, so delivery is at-least-once (a crash between "purged" and "acked"
 merely re-purges — harmless).
@@ -113,10 +121,10 @@ merely re-purges — harmless).
   Redis service, then run multiple consumer replicas
   (`docker compose --profile worker up -d --scale minio-worker-consumer=N`). `redis` is
   bundled in the image, so no rebuild is needed — just the env change.
-- At very high volume the binding constraint is the **CDN API rate**, not the queue. The
-  per-provider token buckets self-throttle so a backlog is held durably rather than getting
-  the account throttled. Provider-side **batch/wildcard/tag purge** is the next lever to
-  raise the ceiling (a follow-up, additive to a provider).
+- At very high volume the binding constraint is the **CDN API rate**, not the queue.
+  **Batching** (Cloudflare ≤30 URLs/call, Bunny wildcard collapse) keeps call volume low, and
+  the per-provider token buckets self-throttle so a backlog is held durably rather than
+  getting the account throttled. Tune the coalesce window with `BATCH_WAIT_MS`.
 
 ## Extending
 
@@ -140,11 +148,12 @@ receiver.
 - **Health:** `GET /healthz` / `/readyz` on the receiver
   (`docker exec <STACK>_WORKER curl -sf http://localhost:8080/healthz`). The consumer has no
   HTTP; check `docker logs <STACK>_WORKER_CONSUMER`.
-- **Confirm a purge:** change an object, then look for `purged <url> via <provider>` in the
-  **consumer** logs; a following `curl -I <public-url>` should show fresh content.
-- **Queue / dead-letters:** the SQLite queue is `QUEUE_DIR/huey.db`; exhausted or
-  non-retryable purges are written to `QUEUE_DIR/dead/*.json` and logged at ERROR — never
-  dropped silently. Inspect with `docker exec <STACK>_WORKER_CONSUMER ls -la /data/queue/dead`.
+- **Confirm a purge:** change an object, then look for `purged N object(s) via <provider>` in
+  the **consumer** logs; a following `curl -I <public-url>` should show fresh content.
+- **Queue / dead-letters:** Huey uses `QUEUE_DIR/huey.db` and the coalescing buffer is
+  `QUEUE_DIR/outbox.db`; exhausted or non-retryable purges are written to `QUEUE_DIR/dead/*.json`
+  and logged at ERROR — never dropped silently. Inspect with
+  `docker exec <STACK>_WORKER_CONSUMER ls -la /data/queue/dead`.
 - **Common issues:**
   - *A service exits immediately* — a required variable is missing; the startup log names it.
   - *Every webhook returns 401* — the MinIO target `auth_token` and the worker's

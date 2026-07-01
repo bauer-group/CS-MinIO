@@ -14,7 +14,7 @@ import hmac
 
 from flask import Flask, jsonify, request
 
-from tasks import purge
+from tasks import enqueue_purges
 
 
 def create_app(cfg, ctx, handlers, log):
@@ -45,19 +45,15 @@ def create_app(cfg, ctx, handlers, log):
             log.warning(f"handler '{source}' could not process payload: {e}")
             return jsonify(error="unprocessable payload"), 400
 
-        enqueued = 0
         try:
-            for job in jobs:
-                for provider_name in job.get("providers", []):
-                    purge(job["path"], job["bucket"], provider_name)
-                    enqueued += 1
-        except Exception as e:  # broker unreachable -> let MinIO retry
+            urls = enqueue_purges(jobs)
+        except Exception as e:  # broker/outbox unreachable -> let MinIO retry
             log.error(f"enqueue failed: {e}")
             return jsonify(error="temporarily unable to enqueue"), 503
 
         if jobs:
-            log.info(f"accepted {len(jobs)} event(s) from '{source}' (enqueued {enqueued} task(s))")
-        return jsonify(received=len(jobs), tasks=enqueued), 200
+            log.info(f"accepted {len(jobs)} event(s) from '{source}' (buffered {urls} url(s))")
+        return jsonify(received=len(jobs), urls=urls), 200
 
     @app.get("/healthz")
     def healthz():
