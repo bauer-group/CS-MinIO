@@ -7,7 +7,7 @@ URL is resolved per-provider later (in the worker), so Cloudflare and Bunny can 
 different hostnames.
 """
 
-from urllib.parse import quote, unquote
+from urllib.parse import quote, unquote_plus
 
 SOURCE = "minio"
 
@@ -42,7 +42,10 @@ def handle(payload, ctx) -> list:
         raw_key = (s3.get("object") or {}).get("key")
         if not bucket or not raw_key:
             continue
-        key = unquote(raw_key)  # MinIO sends the object key URL-encoded
+        # MinIO encodes the key with Go's url.QueryEscape (escape=true for targets):
+        # space -> '+', '/' -> '%2F'. unquote_plus decodes '+' correctly (unquote would
+        # not), so re-encoding below yields the exact '%20' URL the edge cached.
+        key = unquote_plus(raw_key)
         jobs.append({
             "path": f"{bucket}/{quote(key)}",
             "bucket": bucket,
