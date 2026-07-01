@@ -87,6 +87,28 @@ def _mc(args: list, use_json: bool = True) -> subprocess.CompletedProcess:
     return result
 
 
+def _iter_json(text: str):
+    """Yield successive JSON values from mc output.
+
+    mc is inconsistent under ``--json``: most subcommands emit compact JSONL (one
+    object per line), but ``event ls`` pretty-prints *indented, multi-line* objects
+    concatenated together. Parsing line-by-line silently drops every indented record,
+    which breaks binding idempotency. ``raw_decode`` walks the stream either way.
+    """
+    decoder = json.JSONDecoder()
+    idx, n = 0, len(text)
+    while idx < n:
+        while idx < n and text[idx].isspace():
+            idx += 1
+        if idx >= n:
+            break
+        try:
+            obj, idx = decoder.raw_decode(text, idx)
+        except json.JSONDecodeError:
+            break
+        yield obj
+
+
 def _desired_kv(entry: dict) -> dict:
     """Target config keys we manage (order-independent; compared via hash)."""
     return {
@@ -143,10 +165,8 @@ def _list_buckets() -> list:
     buckets = []
     if result.returncode != 0:
         return buckets
-    for line in result.stdout.strip().splitlines():
-        try:
-            data = json.loads(line)
-        except json.JSONDecodeError:
+    for data in _iter_json(result.stdout):
+        if not isinstance(data, dict):
             continue
         key = data.get("key", "")
         if key:
@@ -159,10 +179,8 @@ def _existing_bindings(bucket: str) -> list:
     bindings = []
     if result.returncode != 0:
         return bindings
-    for line in result.stdout.strip().splitlines():
-        try:
-            data = json.loads(line)
-        except json.JSONDecodeError:
+    for data in _iter_json(result.stdout):
+        if not isinstance(data, dict):
             continue
         arn = data.get("arn") or data.get("id")
         if not arn:
