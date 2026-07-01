@@ -190,6 +190,9 @@ services:
       # Pass through environment variables used in config JSON files
       - CONSOLE_USER=${CONSOLE_USER:-console-admin}
       - CONSOLE_PASSWORD=${CONSOLE_PASSWORD:-console-admin}
+      
+      # Shared secret for the notifications task (minio-worker relay); empty if unused
+      - WEBHOOK_AUTH_TOKEN=${WEBHOOK_AUTH_TOKEN:-}
     volumes:
       # Optional: mount custom initialization config (see config/minio-init.example.json)
       # - ${MINIO_INIT_CONFIG:-./config/minio-init.json}:/app/config/init.json:ro
@@ -201,6 +204,49 @@ services:
       local:
 
 
+### Worker (optional - Compose profile: worker) ###
+  # Generic webhook-driven worker. Current job: CDN cache purge (Cloudflare + Bunny).
+  # Enable with: COMPOSE_PROFILES=worker   (see .env.example)
+  # Not publicly exposed: only reachable in-network from minio-server, egress to CDN APIs.
+  minio-worker:
+    profiles: [ "worker" ]
+    image: ${WORKER_IMAGE:-ghcr.io/bauer-group/cs-minio/minio-worker}:${WORKER_VERSION:-latest}
+    container_name: ${STACK_NAME:-s3-app}_WORKER
+    hostname: minio-worker
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "3"
+    environment:
+      - TZ=${TIME_ZONE:-Etc/UTC}
+      - WEBHOOK_AUTH_TOKEN=${WEBHOOK_AUTH_TOKEN:-}
+      - PUBLIC_BASE_URL=${S3_PUBLIC_BASE_URL:-}
+      # Cloudflare (auto-enabled when both are set)
+      - CF_API_TOKEN=${CF_PURGE_API_TOKEN:-}
+      - CF_ZONE_ID=${CF_ZONE_ID:-}
+      # Bunny CDN (auto-enabled when set)
+      - BUNNY_API_KEY=${BUNNY_API_KEY:-}
+      - QUEUE_DIR=/data/queue
+      - LOG_LEVEL=${WORKER_LOG_LEVEL:-INFO}
+    volumes:
+      - minio-worker-queue:/data/queue
+    expose:
+      - 8080/tcp
+    depends_on:
+      minio-server:
+        condition: service_healthy
+    networks:
+      local:
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8080/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+
 ### Volumes ###
 volumes:
   minio-data:
@@ -209,6 +255,9 @@ volumes:
   minio-credentials:
     driver: local
     name: ${STACK_NAME:-s3-app}-credentials
+  minio-worker-queue:
+    driver: local
+    name: ${STACK_NAME:-s3-app}-worker-queue
 
 
 ### Networks ###

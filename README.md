@@ -18,6 +18,7 @@ All three components (MinIO server, init container, admin console) are built fro
   - **Two-Layer Config** - Built-in defaults (admin policy, group, console user) + user-provided config, both processed independently
   - **Pluggable Task System** - Add new provisioning tasks by dropping numbered Python files into `tasks/`
 - **Admin Console** - Full management UI with complete admin functionality, built from a private fork ([karlspace/MinIO-UI](https://github.com/karlspace/MinIO-UI)) with current security patches. Restores the admin capabilities that MinIO removed from its open-source release.
+- **Optional Worker** - Webhook-driven helper container (opt-in via Compose profile) that purges CDN edge caches (Cloudflare + Bunny) when objects change, with a durable queue, retry/backoff, and rate limiting
 - **Multiple Deployment Modes** - Direct port access, Traefik reverse proxy with HTTPS, or development mode with local builds
 - **DNS-Style Bucket Access** - Prepared virtual-host-style routing (e.g., `bucket.s3.example.com`)
 - **CI/CD Automation** - Semantic releases, Docker image builds, base image monitoring, auto-merge
@@ -177,15 +178,30 @@ All operations are idempotent. The init container runs on every start.
 
 See [src/minio-init/README.md](src/minio-init/README.md) for the full JSON schema reference.
 
+## Optional: CDN Cache Purging (Worker)
+
+The optional **`minio-worker`** container automatically purges CDN edge caches when MinIO objects change, so you can run a long CDN edge TTL and still serve fresh content. It receives MinIO bucket-notification webhooks and calls the **Cloudflare** and/or **Bunny** purge APIs, with a durable queue, retry/backoff, rate limiting, and dead-lettering.
+
+It is **disabled by default** and gated behind the Docker Compose `worker` profile.
+
+**Enable it:**
+
+1. In `.env`, set `COMPOSE_PROFILES=worker` and provide `WEBHOOK_AUTH_TOKEN`, `S3_PUBLIC_BASE_URL`, and Cloudflare (`CF_PURGE_API_TOKEN` + `CF_ZONE_ID`) and/or Bunny (`BUNNY_API_KEY`) credentials. A provider is used automatically when its credentials are present.
+2. Add a `notifications` block to your init config so MinIO forwards object events to the worker (see [src/minio-init/README.md](src/minio-init/README.md)).
+3. Start any deployment mode as usual.
+
+The worker is generic (a small plugin framework); CDN purge is its first job. See [src/minio-worker/README.md](src/minio-worker/README.md).
+
 ## Docker Images
 
-All three images are built from source using private forks:
+The core images are built from source using private forks; the optional worker is a small in-repo Python service:
 
 | Image | Source Repository | Build |
 | ----- | ----------------- | ----- |
 | `ghcr.io/bauer-group/cs-minio/minio` | [karlspace/MinIO](https://github.com/karlspace/MinIO) | Go binary on Alpine |
 | `ghcr.io/bauer-group/cs-minio/minio-init` | [karlspace/MinIO-CLI](https://github.com/karlspace/MinIO-CLI) | mc client + Python on Alpine |
 | `ghcr.io/bauer-group/cs-minio/minio-console` | [karlspace/MinIO-UI](https://github.com/karlspace/MinIO-UI) | React + Go on Alpine |
+| `ghcr.io/bauer-group/cs-minio/minio-worker` | (in-repo `src/minio-worker`) | Python on Alpine |
 
 **Base images** (monitored for updates):
 
@@ -246,10 +262,17 @@ Virtual-host-style bucket access (e.g., `bucket.s3.example.com`) is prepared but
 │   │       ├── 02_policies.py         # IAM policy create/update
 │   │       ├── 03_users.py            # User creation and group assignment
 │   │       ├── 04_groups.py           # Group policy attachment
-│   │       └── 05_service_accounts.py # Service accounts (dynamic credentials)
-│   └── minio-console/                 # Admin console image (built from source)
-│       ├── Dockerfile                 # Node + Go build → Alpine runtime
-│       └── .dockerignore
+│   │       ├── 05_service_accounts.py # Service accounts (dynamic credentials)
+│   │       └── 06_notifications.py    # Webhook targets + bucket/event bindings
+│   ├── minio-console/                 # Admin console image (built from source)
+│   │   ├── Dockerfile                 # Node + Go build → Alpine runtime
+│   │   └── .dockerignore
+│   └── minio-worker/                  # Optional webhook worker (CDN purge; in-repo Python)
+│       ├── Dockerfile                 # Python on Alpine runtime
+│       ├── main.py                    # Entrypoint (config, queue, worker, server)
+│       ├── handlers/                  # Event sources (cdn_purge)
+│       ├── providers/                 # Purge targets (cloudflare, bunny)
+│       └── README.md
 ├── config/
 │   ├── minio-init.json                # Init container configuration (user-facing)
 │   └── minio-init.example.json        # Full example with all resource types

@@ -223,3 +223,59 @@ jobs:
       security-scan: false
       security-fail-on: 'CRITICAL'
     secrets: inherit
+
+  # ============================================
+  # MinIO Worker Docker Build Jobs (optional container)
+  # ============================================
+
+  docker-build-worker-release:
+    name: "\U0001F433 Build & Push Worker Image"
+    needs: release
+    if: needs.release.outputs.release-created == 'true'
+    uses: bauer-group/automation-templates/.github/workflows/docker-build.yml@main
+    with:
+      deploy-environment: 'production'
+      publish-to: 'ghcr'
+      ghcr-image-name: 'bauer-group/CS-MinIO/minio-worker'
+      docker-image-name: 'bauergroup/minio-worker'
+
+      release-version: ${{ needs.release.outputs.version }}
+      image-tags: 'stable'
+
+      update-dockerfile-version: true
+      auto-tags: true
+      latest-tag: true
+
+      dockerfile-path: './src/minio-worker/Dockerfile'
+      docker-context: './src/minio-worker'
+      platforms: 'linux/amd64'
+
+      push: true
+
+      security-scan: false
+      security-fail-on: 'CRITICAL'
+      generate-sbom: true
+      sync-dockerhub-readme: true
+    secrets: inherit
+
+  docker-build-worker-pr:
+    name: "\U0001F528 Validate Worker Build (PR)"
+    needs: [validate-compose]
+    if: |
+      github.event_name == 'pull_request' &&
+      needs.validate-compose.result == 'success'
+    uses: bauer-group/automation-templates/.github/workflows/docker-build.yml@main
+    with:
+      publish-to: 'ghcr'
+      ghcr-image-name: 'bauer-group/CS-MinIO/minio-worker'
+
+      auto-tags: true
+      dockerfile-path: './src/minio-worker/Dockerfile'
+      docker-context: './src/minio-worker'
+      platforms: 'linux/amd64'
+
+      push: false
+
+      security-scan: false
+      security-fail-on: 'CRITICAL'
+    secrets: inherit

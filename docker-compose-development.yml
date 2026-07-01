@@ -124,6 +124,9 @@ services:
       - APP_PASSWORD=${APP_PASSWORD:-app-service}
       - BACKUP_USER=${BACKUP_USER:-backup-agent}
       - BACKUP_PASSWORD=${BACKUP_PASSWORD:-backup-agent}
+      
+      # Shared secret for the notifications task (minio-worker relay); empty if unused
+      - WEBHOOK_AUTH_TOKEN=${WEBHOOK_AUTH_TOKEN:-}
     volumes:
       - ${MINIO_INIT_CONFIG:-./config/minio-init.example.json}:/app/config/init.json:ro
       - minio-credentials:/data/credentials
@@ -134,6 +137,49 @@ services:
       local:
 
 
+### Worker (optional - Compose profile: worker) ###
+  # Generic webhook-driven worker. Current job: CDN cache purge (Cloudflare + Bunny).
+  # Enable with: COMPOSE_PROFILES=worker   (see .env.example)
+  minio-worker:
+    profiles: [ "worker" ]
+    build:
+      context: ./src/minio-worker
+    container_name: ${STACK_NAME:-s3-app}_WORKER
+    hostname: minio-worker
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "3"
+    environment:
+      - TZ=${TIME_ZONE:-Etc/UTC}
+      - WEBHOOK_AUTH_TOKEN=${WEBHOOK_AUTH_TOKEN:-}
+      - PUBLIC_BASE_URL=${S3_PUBLIC_BASE_URL:-}
+      # Cloudflare (auto-enabled when both are set)
+      - CF_API_TOKEN=${CF_PURGE_API_TOKEN:-}
+      - CF_ZONE_ID=${CF_ZONE_ID:-}
+      # Bunny CDN (auto-enabled when set)
+      - BUNNY_API_KEY=${BUNNY_API_KEY:-}
+      - QUEUE_DIR=/data/queue
+      - LOG_LEVEL=${WORKER_LOG_LEVEL:-INFO}
+    volumes:
+      - minio-worker-queue:/data/queue
+    expose:
+      - 8080/tcp
+    depends_on:
+      minio-server:
+        condition: service_healthy
+    networks:
+      local:
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8080/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+
 ### Volumes ###
 volumes:
   minio-data:
@@ -142,6 +188,9 @@ volumes:
   minio-credentials:
     driver: local
     name: ${STACK_NAME:-s3-app}-credentials
+  minio-worker-queue:
+    driver: local
+    name: ${STACK_NAME:-s3-app}-worker-queue
 
 
 ### Networks ###

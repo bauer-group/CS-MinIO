@@ -1,0 +1,6 @@
+# Pure-Python only -> no compiler needed on alpine (musl).
+# Floating lower bounds: each image build installs the latest compatible release.
+flask>=3.1
+waitress>=3.0
+httpx>=0.28
+rich>=14.0

@@ -22,6 +22,7 @@ Both configs are processed independently through all tasks. Idempotency ensures 
 - **Users**: Create users with group membership and direct policies
 - **Groups**: Attach policies to groups (groups are created implicitly when policies are attached)
 - **Service Accounts**: Dynamic server-generated credentials, output as JSON files
+- **Notifications**: Webhook notification targets and bucket/event bindings (e.g. for CDN cache purge)
 - **Environment Variable Resolution**: `${VAR_NAME}` syntax in JSON values
 - **Task Discovery**: Pluggable task system via numbered Python files
 
@@ -149,6 +150,56 @@ Credentials are generated dynamically by MinIO and written to `/data/credentials
 }
 ```
 
+### Bucket Notifications
+
+Forward object events (create/delete) to a webhook target - used by the optional
+`minio-worker` relay for CDN cache purging. Each entry co-locates the webhook target
+and its bucket/event bindings.
+
+```json
+{
+  "notifications": [
+    {
+      "id": "cdnpurge",
+      "type": "webhook",
+      "endpoint": "http://minio-worker:8080/webhook",
+      "auth_token": "${WEBHOOK_AUTH_TOKEN}",
+      "queue_dir": "/data/.minio-events",
+      "queue_limit": 100000,
+      "buckets": ["*"],
+      "events": ["put", "delete"],
+      "prefix": "",
+      "suffix": ""
+    }
+  ]
+}
+```
+
+| Field         | Type     | Default            | Description                                                             |
+| ------------- | -------- | ------------------ | ----------------------------------------------------------------------- |
+| `id`          | string   | *(required)*       | Target id (`[A-Za-z0-9_-]`) -> ARN `arn:minio:sqs::<id>:webhook`        |
+| `type`        | string   | `"webhook"`        | Only `webhook` is supported                                             |
+| `endpoint`    | string   | *(required)*       | Webhook URL reachable from the MinIO container                          |
+| `auth_token`  | string   | `""`               | Shared secret sent as `Authorization` (use `${WEBHOOK_AUTH_TOKEN}`)     |
+| `queue_dir`   | string   | `""`               | Server-side store-and-forward dir on a MinIO volume (recommended)       |
+| `queue_limit` | number   | `100000`           | Max queued events                                                       |
+| `buckets`     | string[] | `["*"]`            | `["*"]` = all buckets (resolved at run time), or an explicit list       |
+| `events`      | string[] | `["put","delete"]` | Short `mc event` names: `put`, `delete`, `get`, `replica`               |
+| `prefix`      | string   | `""`               | Optional object-key prefix filter                                       |
+| `suffix`      | string   | `""`               | Optional object-key suffix filter                                       |
+
+**Granularity:** target a single bucket (`["iam"]`), all buckets (`["*"]`), or narrow a
+bucket with `prefix`/`suffix`. For different filters per bucket, use multiple entries.
+
+**Restart behavior:** registering or changing a webhook *target* requires a one-time MinIO
+restart, which the task performs automatically and then waits for health. It restarts
+**only when the target config actually changed** (tracked via a hash marker under
+`/data/credentials/.notifications/`), so re-running with unchanged config causes no
+restart. Event *bindings* never require a restart and are additive (not removed).
+
+**Prerequisite:** the `minio-worker` container must be enabled (Compose profile `worker`)
+to receive these webhooks. See [src/minio-worker/README.md](../minio-worker/README.md).
+
 ## Task Reference
 
 | Order | Task             | Config Key         | Description                                             |
@@ -158,6 +209,7 @@ Credentials are generated dynamically by MinIO and written to `/data/credentials
 | 03    | Users            | `users`            | Create users, assign to groups, attach policies         |
 | 04    | Groups           | `groups`           | Attach policies to groups                               |
 | 05    | Service Accounts | `service_accounts` | Create service accounts with dynamic credentials        |
+| 06    | Notifications    | `notifications`    | Configure webhook targets and bucket/event bindings     |
 
 > **Note:** Users (03) run before groups (04). Groups are implicitly created when users are added via `mc admin group add`. The groups task then attaches policies via `mc admin policy attach --group`. This ordering ensures policy attachments persist (group membership updates cannot overwrite them).
 
@@ -174,9 +226,13 @@ Credentials are generated dynamically by MinIO and written to `/data/credentials
 | `MINIO_WAIT_TIMEOUT`    | `60`                       | Seconds to wait for MinIO server    |
 | `MINIO_CREDENTIALS_DIR` | `/data/credentials`        | Output directory for SA credentials |
 
+`NOTIFY_MARKER_DIR` (default `/data/credentials/.notifications`) controls where the
+notifications task stores target-config hashes used to decide when a MinIO restart is
+required.
+
 ## Adding New Tasks
 
-1. Create a new file in `tasks/` with a numeric prefix (e.g., `06_notifications.py`)
+1. Create a new file in `tasks/` with a numeric prefix (e.g., `07_myfeature.py`)
 2. Define module-level constants:
    - `TASK_NAME`: Display name
    - `TASK_DESCRIPTION`: Brief description
