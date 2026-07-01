@@ -5,4 +5,4 @@ waitress>=3.0
 httpx>=0.28
 rich>=14.0
 huey>=2.5
-redis>=5.0
+redis>=5.0  # only used when HUEY_BACKEND=redis; bundled so switching needs no rebuild

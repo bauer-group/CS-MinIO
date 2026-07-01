@@ -32,7 +32,10 @@ log = setup_logging(cfg.log_level, secrets=cfg.secret_values())
 
 
 def _make_huey():
-    """SQLite in-container by default; Redis when HUEY_BACKEND=redis (results off)."""
+    """SQLite in-container by default; Redis when HUEY_BACKEND=redis (results off).
+
+    ``redis`` is bundled in the image, so switching backends is just an env change.
+    """
     if cfg.huey_backend == "redis":
         if not cfg.redis_url:
             log.error("configuration error: HUEY_BACKEND=redis requires REDIS_URL")

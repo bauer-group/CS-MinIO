@@ -111,7 +111,8 @@ merely re-purges — harmless).
   queue DB on the `minio-worker-queue` volume. Tune throughput with `WORKER_CONCURRENCY`.
 - **Redis** unlocks horizontal scale-out: set `HUEY_BACKEND=redis` + `REDIS_URL`, add a
   Redis service, then run multiple consumer replicas
-  (`docker compose --profile worker up -d --scale minio-worker-consumer=N`). No code change.
+  (`docker compose --profile worker up -d --scale minio-worker-consumer=N`). `redis` is
+  bundled in the image, so no rebuild is needed — just the env change.
 - At very high volume the binding constraint is the **CDN API rate**, not the queue. The
   per-provider token buckets self-throttle so a backlog is held durably rather than getting
   the account throttled. Provider-side **batch/wildcard/tag purge** is the next lever to
