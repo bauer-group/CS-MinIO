@@ -60,6 +60,26 @@ x-minio-common: &minio-common
 
 
 ### Worker Template (optional) ###
+# Shared env as a MAP so each service can merge it (<<: *worker-env) and add its WORKER_MODE.
+x-worker-env: &worker-env
+  TZ: ${TIME_ZONE:-Etc/UTC}
+  WEBHOOK_AUTH_TOKEN: ${WEBHOOK_AUTH_TOKEN:-}
+  PUBLIC_BASE_URL: ${S3_PUBLIC_BASE_URL:-}
+  # Cloudflare (auto-enabled when both are set) / Bunny (auto-enabled when set)
+  CF_API_TOKEN: ${CF_PURGE_API_TOKEN:-}
+  CF_ZONE_ID: ${CF_ZONE_ID:-}
+  BUNNY_API_KEY: ${BUNNY_API_KEY:-}
+  QUEUE_DIR: /data/queue
+  LOG_LEVEL: ${WORKER_LOG_LEVEL:-INFO}
+  WORKER_CONCURRENCY: ${WORKER_CONCURRENCY:-4}
+  # Batching: coalesce URLs into fewer CDN calls (Cloudflare <=30/call; Bunny wildcard)
+  BATCH_SIZE: ${BATCH_SIZE:-30}
+  BATCH_WAIT_MS: ${BATCH_WAIT_MS:-500}
+  BUNNY_WILDCARD_THRESHOLD: ${BUNNY_WILDCARD_THRESHOLD:-0}
+  # Broker: sqlite (in-container) now; set redis + REDIS_URL to scale out later
+  HUEY_BACKEND: ${HUEY_BACKEND:-sqlite}
+  REDIS_URL: ${REDIS_URL:-}
+
 x-worker-common: &worker-common
   profiles: [ "worker" ]
   image: ${WORKER_IMAGE:-ghcr.io/bauer-group/cs-minio/minio-worker}:${WORKER_VERSION:-latest}
@@ -69,23 +89,6 @@ x-worker-common: &worker-common
     options:
       max-size: "50m"
       max-file: "3"
-  environment:
-    - TZ=${TIME_ZONE:-Etc/UTC}
-    - WEBHOOK_AUTH_TOKEN=${WEBHOOK_AUTH_TOKEN:-}
-    - PUBLIC_BASE_URL=${S3_PUBLIC_BASE_URL:-}
-    # Cloudflare (auto-enabled when both are set) / Bunny (auto-enabled when set)
-    - CF_API_TOKEN=${CF_PURGE_API_TOKEN:-}
-    - CF_ZONE_ID=${CF_ZONE_ID:-}
-    - BUNNY_API_KEY=${BUNNY_API_KEY:-}
-    - QUEUE_DIR=/data/queue
-    - LOG_LEVEL=${WORKER_LOG_LEVEL:-INFO}
-    # Batching: coalesce URLs into fewer CDN calls (Cloudflare <=30/call; Bunny wildcard)
-    - BATCH_SIZE=${BATCH_SIZE:-30}
-    - BATCH_WAIT_MS=${BATCH_WAIT_MS:-500}
-    - BUNNY_WILDCARD_THRESHOLD=${BUNNY_WILDCARD_THRESHOLD:-0}
-    # Broker: sqlite (in-container) now; set redis + REDIS_URL to scale out later
-    - HUEY_BACKEND=${HUEY_BACKEND:-sqlite}
-    - REDIS_URL=${REDIS_URL:-}
   volumes:
     - minio-worker-queue:/data/queue
   depends_on:
@@ -244,31 +247,23 @@ services:
   # Generic webhook-driven worker = receiver (HTTP) + consumer (huey). Current job:
   # CDN cache purge (Cloudflare + Bunny). Enable with COMPOSE_PROFILES=worker (see .env.example).
   # Not publicly exposed: only reachable in-network from minio-server, egress to CDN APIs.
+  # Both run the same image; WORKER_MODE selects the role and drives the built-in healthcheck.
   minio-worker:
     <<: *worker-common
     container_name: ${STACK_NAME:-s3-app}_WORKER
     hostname: minio-worker
+    environment:
+      <<: *worker-env
+      WORKER_MODE: receiver
     expose:
       - 8080/tcp
-    healthcheck:
-      test: ["CMD", "curl", "-sf", "http://localhost:8080/healthz"]
-      interval: 30s
-      timeout: 5s
-      retries: 3
-      start_period: 10s
 
-  # Huey consumer: drains the queue and calls the CDN purge APIs.
   minio-worker-consumer:
     <<: *worker-common
     container_name: ${STACK_NAME:-s3-app}_WORKER_CONSUMER
-    command: ["huey_consumer", "tasks.huey", "-w", "${WORKER_CONCURRENCY:-4}", "-k", "thread"]
-    healthcheck:
-      # no HTTP endpoint; check the heartbeat file the consumer refreshes every minute
-      test: ["CMD-SHELL", "test $$(( $$(date +%s) - $$(stat -c %Y /data/queue/consumer.alive.$$(hostname) 2>/dev/null || echo 0) )) -lt 180"]
-      interval: 60s
-      timeout: 5s
-      retries: 3
-      start_period: 120s
+    environment:
+      <<: *worker-env
+      WORKER_MODE: consumer
 
 
 ### Volumes ###

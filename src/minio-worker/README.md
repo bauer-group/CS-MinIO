@@ -5,10 +5,12 @@ bucket-notification webhooks, enqueues them into a **durable task queue** ([Huey
 and a consumer drains that queue — with retry, exponential backoff, per-target rate
 limiting, and dead-lettering.
 
-It runs as **two services from one image**:
+It runs as **two services from one image**, selected by the `WORKER_MODE` env:
 
-- **`minio-worker`** — the HTTP **receiver** (Flask/waitress): authenticate → translate → enqueue. Fast and independently scalable; it does no purging itself.
-- **`minio-worker-consumer`** — the **`huey_consumer`** process that executes the queued tasks.
+- **`minio-worker`** (`WORKER_MODE=receiver`) — the HTTP **receiver** (Flask/waitress): authenticate → translate → enqueue. Fast and independently scalable; it does no purging itself.
+- **`minio-worker-consumer`** (`WORKER_MODE=consumer`) — the **`huey_consumer`** process that executes the queued tasks.
+
+The entrypoint dispatches on `WORKER_MODE`, and a **built-in image healthcheck** uses it too — so compose needs no manual `healthcheck` for either service.
 
 The queue backend is chosen by `HUEY_BACKEND`: **`sqlite`** (self-contained, in-container)
 now, or **`redis`** later for scale-out — the same task code runs on both.
@@ -89,7 +91,8 @@ The worker is off by default. To enable CDN cache purge for the stack:
 | `QUEUE_DIR` | no | `/data/queue` | Holds the SQLite queue DB and dead-letters (mount a volume). |
 | `HUEY_BACKEND` | no | `sqlite` | `sqlite` (in-container) or `redis` (scale-out). |
 | `REDIS_URL` | if redis | — | e.g. `redis://redis:6379/0`. |
-| `WORKER_CONCURRENCY` | no | `4` | Consumer worker threads (compose passes this to `huey_consumer -w`). |
+| `WORKER_MODE` | no | `receiver` | `receiver` or `consumer` — selects the role (compose sets it per service). |
+| `WORKER_CONCURRENCY` | no | `4` | Consumer worker threads (the entrypoint passes this to `huey_consumer -w`). |
 | `MAX_RETRIES` | no | `10` | Attempts before dead-letter. |
 | `RETRY_BASE_SECONDS` / `RETRY_MAX_SECONDS` | no | `2` / `300` | Exponential backoff base / cap. |
 | `BATCH_SIZE` | no | `30` | Max URLs per Cloudflare purge call. |
@@ -192,10 +195,11 @@ receiver.
 ## Operations & troubleshooting
 
 - **Two services:** `<STACK>_WORKER` (receiver) and `<STACK>_WORKER_CONSUMER` (consumer).
-- **Health:** the receiver exposes `GET /healthz` / `/readyz`
-  (`docker exec <STACK>_WORKER curl -sf http://localhost:8080/healthz`). The consumer has no
-  HTTP; its container healthcheck watches a per-minute heartbeat file it refreshes
-  (`QUEUE_DIR/consumer.alive.<host>`), so a hung or dead consumer is reported unhealthy.
+- **Health:** a **built-in image healthcheck** (`healthcheck.py`) covers both roles via
+  `WORKER_MODE` — the receiver's `GET /healthz`, or the consumer's per-minute heartbeat file
+  (`QUEUE_DIR/consumer.alive.<host>`). No compose healthcheck is needed; a dead receiver or a
+  hung/dead consumer is reported unhealthy. Manual check:
+  `docker exec <STACK>_WORKER curl -sf http://localhost:8080/healthz`.
 - **Confirm a purge:** change an object, then look for `purged N object(s) via <provider>` in
   the **consumer** logs; a following `curl -I <public-url>` should show fresh content.
 - **Queue / dead-letters:** Huey uses `QUEUE_DIR/huey.db` and the coalescing buffer is

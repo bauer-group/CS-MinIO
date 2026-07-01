@@ -73,9 +73,10 @@ EXPOSE 8080
 # ---------------------------------------------------------------------------
 # Health & Entrypoint (tini for proper signal handling)
 # ---------------------------------------------------------------------------
-HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-    CMD curl -sf http://localhost:8080/healthz || exit 1
+# One built-in check for both roles (uses WORKER_MODE; auto-detects when unset).
+HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=3 \
+    CMD ["python", "healthcheck.py"]
 
-# Receiver by default; the consumer service overrides `command` with huey_consumer.
+# main.py dispatches on WORKER_MODE (receiver | consumer) — same image for both roles.
 ENTRYPOINT ["/sbin/tini", "--"]
 CMD ["python", "main.py"]
