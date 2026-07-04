@@ -1,3 +1,9 @@
+## [0.9.0](https://github.com/bauer-group/CS-MinIO/compare/v0.8.2...v0.9.0) (2026-07-04)
+
+### 🚀 Features
+
+* **minio-init:** added per-bucket CORS stub field ([4bf7f42](https://github.com/bauer-group/CS-MinIO/commit/4bf7f42a95b8b8d70756d71d44bde33288183676))
+
 ## [0.8.2](https://github.com/bauer-group/CS-MinIO/compare/v0.8.1...v0.8.2) (2026-07-01)
 
 ## [0.8.1](https://github.com/bauer-group/CS-MinIO/compare/v0.8.0...v0.8.1) (2026-07-01)
