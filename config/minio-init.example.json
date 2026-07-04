@@ -24,14 +24,32 @@
     {
       "name": "public-assets",
       "region": "eu-central-1",
-      "policy": "public"
+      "policy": "public",
+      "cors": [
+        {
+          "allowed_origins": ["https://app.example.com"],
+          "allowed_methods": ["GET", "HEAD"],
+          "allowed_headers": ["*"],
+          "expose_headers": ["ETag", "Content-Length"],
+          "max_age_seconds": 3600
+        }
+      ]
     },
     {
       "name": "uploads",
       "region": "eu-central-1",
       "versioning": true,
       "quota": { "type": "hard", "size": "50GB" },
-      "policy": "private"
+      "policy": "private",
+      "cors": [
+        {
+          "allowed_origins": ["https://app.example.com"],
+          "allowed_methods": ["GET", "PUT", "POST", "HEAD"],
+          "allowed_headers": ["*"],
+          "expose_headers": ["ETag"],
+          "max_age_seconds": 3600
+        }
+      ]
     }
   ],
   "policies": [

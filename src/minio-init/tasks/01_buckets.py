@@ -8,6 +8,7 @@ Creates buckets with optional configuration:
   - retention (compliance/governance default)
   - lifecycle rules (prefix-based expiration for current/noncurrent versions)
   - anonymous access policy (private/public/public-readwrite)
+  - CORS rules (engine-dependent; declared here, applied by the storage engine)
 
 JSON config example:
 {
@@ -23,7 +24,16 @@ JSON config example:
         { "prefix": "daily/", "expire_days": 15 },
         { "prefix": "weekly/", "expire_days": 36 }
       ],
-      "policy": "private"
+      "policy": "private",
+      "cors": [
+        {
+          "allowed_origins": ["https://app.example.com"],
+          "allowed_methods": ["GET", "PUT", "POST", "HEAD"],
+          "allowed_headers": ["*"],
+          "expose_headers": ["ETag"],
+          "max_age_seconds": 3600
+        }
+      ]
     }
   ]
 }
@@ -36,6 +46,12 @@ Notes:
   - lifecycle_rules are matched by prefix for idempotency. Existing rules
     with the same prefix are updated if settings differ, or skipped if
     already correct. Rules not in the config are not removed.
+  - cors is an S3-compatible per-bucket CORS ruleset. It is validated here but
+    NOT applied to MinIO: open-source MinIO has no per-bucket CORS API and
+    enforces CORS globally via the MINIO_API_CORS_ALLOW_ORIGIN server setting
+    (default "*"). The field exists so applications can declare CORS today; a
+    storage engine with per-bucket CORS (e.g. SeaweedFS via PutBucketCors) can
+    apply the same config later without any application change.
   - All operations are idempotent. Existing settings are re-applied
     (no-op if unchanged) rather than skipped.
 """
@@ -139,6 +155,53 @@ def _rule_matches(existing: dict, desired: dict) -> bool:
     if existing["expire_delete_marker"] != desired.get("expire_delete_marker", False):
         return False
     return True
+
+
+CORS_ALLOWED_METHODS = {"GET", "PUT", "POST", "DELETE", "HEAD"}
+
+
+def _validate_cors_rules(rules) -> list:
+    """Validate an S3-compatible per-bucket CORS ruleset.
+
+    Returns a list of human-readable error strings (empty = valid). Validation is
+    structural only — it does not apply anything to the storage engine. Kept as a
+    standalone helper so an engine that supports per-bucket CORS can reuse it.
+    """
+    errors = []
+
+    if not isinstance(rules, list):
+        return [f"cors must be a list of rules, got {type(rules).__name__}"]
+
+    for i, rule in enumerate(rules):
+        where = f"cors[{i}]"
+        if not isinstance(rule, dict):
+            errors.append(f"{where} must be an object")
+            continue
+
+        origins = rule.get("allowed_origins")
+        if not isinstance(origins, list) or not origins:
+            errors.append(f"{where}.allowed_origins must be a non-empty list")
+
+        methods = rule.get("allowed_methods")
+        if not isinstance(methods, list) or not methods:
+            errors.append(f"{where}.allowed_methods must be a non-empty list")
+        else:
+            invalid = [m for m in methods if m not in CORS_ALLOWED_METHODS]
+            if invalid:
+                errors.append(
+                    f"{where}.allowed_methods has unsupported method(s): {', '.join(map(str, invalid))} "
+                    f"(allowed: {', '.join(sorted(CORS_ALLOWED_METHODS))})"
+                )
+
+        for opt_list in ("allowed_headers", "expose_headers"):
+            if opt_list in rule and not isinstance(rule[opt_list], list):
+                errors.append(f"{where}.{opt_list} must be a list")
+
+        max_age = rule.get("max_age_seconds")
+        if max_age is not None and (not isinstance(max_age, int) or isinstance(max_age, bool) or max_age < 0):
+            errors.append(f"{where}.max_age_seconds must be a non-negative integer")
+
+    return errors
 
 
 def run(items: list, console, **kwargs) -> dict:
@@ -279,6 +342,20 @@ def run(items: list, console, **kwargs) -> dict:
             _mc(["anonymous", "set", "download", target])
         elif policy == "public-readwrite":
             _mc(["anonymous", "set", "public", target])
+
+        # --- CORS (engine-dependent; declared but not applied on MinIO) ---
+        cors = bucket.get("cors")
+        if cors:
+            cors_errors = _validate_cors_rules(cors)
+            for err in cors_errors:
+                console.print(f"    [yellow]  CORS config invalid: {err}[/]")
+                warnings += 1
+            if not cors_errors:
+                console.print(
+                    f"    [dim]  CORS: {len(cors)} rule(s) declared - not applied on MinIO "
+                    f"(global CORS via MINIO_API_CORS_ALLOW_ORIGIN); applied by engines with "
+                    f"per-bucket CORS[/]"
+                )
 
     total = len(items)
     msg = f"{total} bucket(s) processed ({created} created)"

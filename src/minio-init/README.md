@@ -103,6 +103,7 @@ Both configs are processed independently through all tasks. Idempotency ensures 
 | `retention`       | object  | -            | `{"mode": "compliance", "days": 365}` (requires lock)  |
 | `lifecycle_rules` | array   | `[]`         | Prefix-based expiration rules (see below)              |
 | `policy`          | string  | `"private"`  | `private`, `public` (download), `public-readwrite`     |
+| `cors`            | array   | `[]`         | S3-compatible per-bucket CORS rules (see below)        |
 
 **Retention validity:** Specify either `days` or `years` in the retention object. The init container converts these to the `mc retention set` format (`365d` or `1y`).
 
@@ -119,6 +120,24 @@ Both configs are processed independently through all tasks. Idempotency ensures 
 
 Lifecycle rules are matched by prefix for idempotency. On re-run, existing rules with the same prefix are updated if settings differ, or left unchanged if already correct. Rules not present in the config are not removed (additive-only).
 
+**CORS rules:** Each rule in the `cors` array is an S3-compatible CORS rule:
+
+| Field             | Type    | Required | Default | Description                                       |
+| ----------------- | ------- | -------- | ------- | ------------------------------------------------- |
+| `allowed_origins` | array   | Yes      | -       | Allowed origins (S3 `AllowedOrigins`)             |
+| `allowed_methods` | array   | Yes      | -       | Subset of `GET`, `PUT`, `POST`, `DELETE`, `HEAD`  |
+| `allowed_headers` | array   | No       | `["*"]` | Allowed request headers (S3 `AllowedHeaders`)     |
+| `expose_headers`  | array   | No       | -       | Response headers exposed to the browser           |
+| `max_age_seconds` | integer | No       | -       | Preflight cache duration (S3 `MaxAgeSeconds`)     |
+
+> **Engine-dependent — no-op on MinIO.** Open-source MinIO has no per-bucket CORS API and
+> enforces CORS **globally** via the `MINIO_API_CORS_ALLOW_ORIGIN` server setting (default `*`,
+> which already allows presigned browser uploads). The init container **validates** `cors` but
+> does **not** apply it on MinIO. The field exists so applications can declare CORS today; a
+> storage engine with per-bucket CORS (e.g. SeaweedFS via `PutBucketCors`) can apply the same
+> config later without any application change. Invalid rules produce a warning but do not fail
+> the run.
+
 **Existing bucket limitations:**
 
 | Setting           | New Bucket | Existing Bucket                    |
@@ -129,6 +148,7 @@ Lifecycle rules are matched by prefix for idempotency. On re-run, existing rules
 | `retention`       | Applied    | Updated                            |
 | `lifecycle_rules` | Applied    | Updated (per-prefix idempotent)    |
 | `policy`          | Applied    | Updated                            |
+| `cors`            | Declared   | No-op on MinIO (engine-dependent)  |
 
 ### Service Account Options
 
