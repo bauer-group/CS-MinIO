@@ -1,3 +1,9 @@
+## [0.9.2](https://github.com/bauer-group/CS-MinIO/compare/v0.9.1...v0.9.2) (2026-07-30)
+
+### 🐛 Bug Fixes
+
+* **ci:** added the missing permissions block ([dbe9057](https://github.com/bauer-group/CS-MinIO/commit/dbe90575583f663393ac267d8b25b9d253822bbc))
+
 ## [0.9.1](https://github.com/bauer-group/CS-MinIO/compare/v0.9.0...v0.9.1) (2026-07-08)
 
 ## [0.9.0](https://github.com/bauer-group/CS-MinIO/compare/v0.8.2...v0.9.0) (2026-07-04)
