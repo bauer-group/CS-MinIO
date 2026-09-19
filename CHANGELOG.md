@@ -4,6 +4,19 @@ All notable changes to this project are documented here. This file is maintained
 automatically by [semantic-release](https://github.com/semantic-release/semantic-release)
 on every release to `main`.
 
+## [0.9.9](https://github.com/bauer-group/CS-MinIO/compare/v0.9.8...v0.9.9) (2026-09-19)
+
+### 🐛 Bug Fixes
+
+* **traefik:** stream S3 uploads instead of buffering them ([f64bffb](https://github.com/bauer-group/CS-MinIO/commit/f64bffb199d88dd57277d8a21702f2e3bf532912))
+
+### 🔧 Maintenance
+
+* update Dockerfile version to 0.9.8 ([b77ab8f](https://github.com/bauer-group/CS-MinIO/commit/b77ab8f3dcfa843114b7ab505eb1c7eee6c55c10))
+* update Dockerfile version to 0.9.8 ([655d2e8](https://github.com/bauer-group/CS-MinIO/commit/655d2e8e837871197d8e9bc1a99bb4f0367cf17b))
+* update Dockerfile version to 0.9.8 ([d249ec4](https://github.com/bauer-group/CS-MinIO/commit/d249ec48427c032fd9fa28f4f3fa971cd657ffcd))
+* update Dockerfile version to 0.9.8 ([664c85d](https://github.com/bauer-group/CS-MinIO/commit/664c85d92def93fc74e121621a21865b47424e4f))
+
 ## [0.9.8](https://github.com/bauer-group/CS-MinIO/compare/v0.9.7...v0.9.8) (2026-09-18)
 
 ### 🔧 Maintenance
