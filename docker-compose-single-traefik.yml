@@ -11,7 +11,7 @@
 #
 # Features:
 #   - HTTPS via Let's Encrypt (automatic certificate management)
-#   - S3 path-style access with no-buffering for large uploads
+#   - S3 path-style access with streaming for large uploads (no buffering)
 #   - Separate endpoints for S3 API and Console
 #   - Admin console with full management UI
 #   - Init container for declarative bucket/user setup
@@ -117,11 +117,11 @@ services:
       - "traefik.http.middlewares.${STACK_NAME:-s3-app}-redirect-to-secure.redirectscheme.scheme=https"
       - "traefik.http.middlewares.${STACK_NAME:-s3-app}-redirect-to-secure.redirectscheme.permanent=true"
 
-      # ── Middleware: No Buffering (large S3 uploads) ────────────────────
-      - "traefik.http.middlewares.${STACK_NAME:-s3-app}-nobuffer.buffering.maxRequestBodyBytes=0"
-      - "traefik.http.middlewares.${STACK_NAME:-s3-app}-nobuffer.buffering.memRequestBodyBytes=0"
-      - "traefik.http.middlewares.${STACK_NAME:-s3-app}-nobuffer.buffering.maxResponseBodyBytes=0"
-      - "traefik.http.middlewares.${STACK_NAME:-s3-app}-nobuffer.buffering.memResponseBodyBytes=0"
+      # -- Streaming: NO buffering middleware on S3 routes ----------------
+      # Traefik streams request and response bodies by default. Attaching ANY
+      # buffering middleware -- even with 0 values -- turns buffering ON and
+      # spools every upload to disk before it reaches MinIO. Large multipart
+      # uploads must never pass through it.
 
       # ── Router: S3 API - HTTP (redirect to HTTPS) ─────────────────────
       - "traefik.http.routers.${STACK_NAME:-s3-app}-s3-http.rule=Host(`${S3_HOSTNAME}`)"
@@ -134,7 +134,6 @@ services:
       - "traefik.http.routers.${STACK_NAME:-s3-app}-s3.tls=true"
       - "traefik.http.routers.${STACK_NAME:-s3-app}-s3.tls.certresolver=letsencrypt"
       - "traefik.http.routers.${STACK_NAME:-s3-app}-s3.service=${STACK_NAME:-s3-app}-s3"
-      - "traefik.http.routers.${STACK_NAME:-s3-app}-s3.middlewares=${STACK_NAME:-s3-app}-nobuffer"
 
       # ── Service: S3 API ────────────────────────────────────────────────
       - "traefik.http.services.${STACK_NAME:-s3-app}-s3.loadBalancer.server.port=9000"
@@ -160,7 +159,6 @@ services:
       # - "traefik.http.routers.${STACK_NAME:-s3-app}-s3-buckets.tls=true"
       # - "traefik.http.routers.${STACK_NAME:-s3-app}-s3-buckets.tls.certresolver=letsencrypt"
       # - "traefik.http.routers.${STACK_NAME:-s3-app}-s3-buckets.service=${STACK_NAME:-s3-app}-s3"
-      # - "traefik.http.routers.${STACK_NAME:-s3-app}-s3-buckets.middlewares=${STACK_NAME:-s3-app}-nobuffer"
       #
       # Option B: Explicit SANs (Let's Encrypt HTTP challenge, max 100 per cert)
       # - "traefik.http.routers.${STACK_NAME:-s3-app}-s3.tls.domains[0].main=${S3_HOSTNAME}"
