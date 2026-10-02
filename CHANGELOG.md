@@ -4,6 +4,18 @@ All notable changes to this project are documented here. This file is maintained
 automatically by [semantic-release](https://github.com/semantic-release/semantic-release)
 on every release to `main`.
 
+## [0.9.10](https://github.com/bauer-group/CS-MinIO/compare/v0.9.9...v0.9.10) (2026-10-02)
+
+### 🔧 Maintenance
+
+* **ci:** removed issue AI summary workflow ([1ee0af1](https://github.com/bauer-group/CS-MinIO/commit/1ee0af14ff63e5dcc727f068599b8d13b19e8c76)), references [bauer-group/automation-templates#105](https://github.com/bauer-group/automation-templates/issues/105)
+* **deps:** update base image node-alpine ([2639db8](https://github.com/bauer-group/CS-MinIO/commit/2639db8ce7a78db7b185cdfd3c703976b298f15e))
+* **deps:** update base image python-alpine ([073a861](https://github.com/bauer-group/CS-MinIO/commit/073a861bad98b9aa9f403cbf1452791b61f707eb))
+* update Dockerfile version to 0.9.9 ([ca85a04](https://github.com/bauer-group/CS-MinIO/commit/ca85a0405941455648605c71220faf7e35b90ebb))
+* update Dockerfile version to 0.9.9 ([273b8bc](https://github.com/bauer-group/CS-MinIO/commit/273b8bc0107c0de36fc3ab2e60aa2cc98fdec2ef))
+* update Dockerfile version to 0.9.9 ([89c927e](https://github.com/bauer-group/CS-MinIO/commit/89c927e3c1aab97ec9128f79a0a4482d43046bdd))
+* update Dockerfile version to 0.9.9 ([3959fe2](https://github.com/bauer-group/CS-MinIO/commit/3959fe2634e86794c8640b3a668bc3cf7beaa7a1))
+
 ## [0.9.9](https://github.com/bauer-group/CS-MinIO/compare/v0.9.8...v0.9.9) (2026-09-19)
 
 ### 🐛 Bug Fixes
