@@ -4,6 +4,27 @@ All notable changes to this project are documented here. This file is maintained
 automatically by [semantic-release](https://github.com/semantic-release/semantic-release)
 on every release to `main`.
 
+## [0.9.11](https://github.com/bauer-group/CS-MinIO/compare/v0.9.10...v0.9.11) (2026-10-09)
+
+### 🐛 Bug Fixes
+
+* **init:** exited non-zero when a provisioning step failed ([9e328c3](https://github.com/bauer-group/CS-MinIO/commit/9e328c3248c57ce7a5287ac4932d2a659d9c4d82))
+* **init:** kept webhook credentials out of the skip log line ([55f3299](https://github.com/bauer-group/CS-MinIO/commit/55f3299454d354b590f65ab9c9a87e4a3300d082))
+* **init:** parsed service account credentials from indented output ([c492b33](https://github.com/bauer-group/CS-MinIO/commit/c492b33fb141fa7212a06ac5fab319cec877cdb8))
+* **init:** published the config schema that consumers reference ([c043305](https://github.com/bauer-group/CS-MinIO/commit/c0433058ef26de115d4d0f8c32877d8971c3e364))
+* **init:** restricted service accounts to their configured policy ([6d70eb9](https://github.com/bauer-group/CS-MinIO/commit/6d70eb93e1382a01672a79a6658950c0fffe2f7a))
+* **init:** retried a webhook target whose receiver came up late ([1f0a3f1](https://github.com/bauer-group/CS-MinIO/commit/1f0a3f1705f15e8480643c8930ccf48c799c9d75))
+* **init:** stopped adding lifecycle rules again on every run ([9b01e8a](https://github.com/bauer-group/CS-MinIO/commit/9b01e8a70fa5c822447f948e06e1915d6462b36a))
+* **init:** stopped creating a new service account on every run ([c82f831](https://github.com/bauer-group/CS-MinIO/commit/c82f8316a889873a81689c2f5d12722293fb6cd1))
+* **init:** stopped skipping groups that no configured user lists ([b87622d](https://github.com/bauer-group/CS-MinIO/commit/b87622d87b9f8d5d567eb8cc9df4bd59717e9625))
+
+### 🔧 Maintenance
+
+* update Dockerfile version to 0.9.10 ([7c886da](https://github.com/bauer-group/CS-MinIO/commit/7c886da3a6d1d4d8664b0430ffa9455416a0dfa8))
+* update Dockerfile version to 0.9.10 ([b984fac](https://github.com/bauer-group/CS-MinIO/commit/b984facba1e2431c7b7771d03bee5af323ea0c8d))
+* update Dockerfile version to 0.9.10 ([64cce53](https://github.com/bauer-group/CS-MinIO/commit/64cce536db185b0d7960c9b827c170732fb57920))
+* update Dockerfile version to 0.9.10 ([c512e88](https://github.com/bauer-group/CS-MinIO/commit/c512e88816491bab899f0156485ff435bf7c1a50))
+
 ## [0.9.10](https://github.com/bauer-group/CS-MinIO/compare/v0.9.9...v0.9.10) (2026-10-02)
 
 ### 🔧 Maintenance
