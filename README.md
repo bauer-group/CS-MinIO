@@ -16,6 +16,7 @@ The three core components (MinIO server, init container, admin console) are buil
   - **Notifications** as webhook targets with bucket/event bindings (e.g. to trigger CDN cache purging via the optional worker)
   - **Environment Variable Resolution** - `${VAR_NAME}` syntax in JSON values keeps secrets out of config files
   - **Fully Idempotent** - Runs on every container start; safely skips already-existing resources
+  - **Truthful Exit Status** - Exits 1 if any configured item fails, so dependent services never start on a half-applied setup; optional items (e.g. a user whose secret is empty) are reported as skipped
   - **Two-Layer Config** - Built-in defaults (admin policy, group, console user) + user-provided config, both processed independently
   - **Pluggable Task System** - Add new provisioning tasks by dropping numbered Python files into `tasks/`
 - **Admin Console** - Full management UI with complete admin functionality, built from a private fork ([karlspace/MinIO-UI](https://github.com/karlspace/MinIO-UI)) with current security patches. Restores the admin capabilities that MinIO removed from its open-source release.
@@ -123,6 +124,8 @@ The init container processes two configuration files in order:
 2. **User config** (mounted) - Your custom buckets, policies, users, service accounts, notifications
 
 All operations are idempotent. The init container runs on every start.
+
+**Exit status:** the init container exits 1 if any configured item fails (a bucket, policy, user, group attachment, service account or notification that cannot be applied) and 0 otherwise. Intentionally optional items - a user whose `access_key` or `secret_key` is empty, a group without members, a notification whose receiver is not running - are logged as `Skipped:` and do not fail the run. Dependent services can therefore wait for it with `condition: service_completed_successfully`. See [src/minio-init/README.md](src/minio-init/README.md#exit-status) for the full list and upgrade notes.
 
 **Supported resources:**
 
@@ -274,6 +277,7 @@ Virtual-host-style bucket access (e.g., `bucket.s3.example.com`) is prepared but
 │   │   ├── config/
 │   │   │   └── default.json           # Built-in default (admin policy/group/user)
 │   │   └── tasks/
+│   │       ├── _mc.py                 # Shared mc runner + Failed/Skipped/Warning reporting
 │   │       ├── 01_buckets.py          # Bucket creation and configuration
 │   │       ├── 02_policies.py         # IAM policy create/update
 │   │       ├── 03_users.py            # User creation and group assignment
@@ -294,6 +298,8 @@ Virtual-host-style bucket access (e.g., `bucket.s3.example.com`) is prepared but
 │   └── minio-init.example.json        # Full example with all resource types
 ├── docs/
 │   └── aistor-migration.md            # MinIO AIStor (licensed successor) info
+├── tests/
+│   └── minio-init/                    # Init container unit tests (pytest, mc faked)
 ├── docker-compose-single.yml          # Single server, direct port access
 ├── docker-compose-single-traefik.yml  # Single server, Traefik HTTPS
 ├── docker-compose-development.yml     # Development mode, local source builds

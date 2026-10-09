@@ -20,40 +20,22 @@ JSON config example:
     }
   ]
 }
+
+A policy that cannot be created or updated counts as a failure (exit 1):
+users, groups and service accounts that reference it would otherwise run with
+missing or stale permissions.
 """
 
 import json
 import os
-import subprocess
 import tempfile
+
+from ._mc import MC_ALIAS, fail
+from ._mc import mc as _mc
 
 TASK_NAME = "Policies"
 TASK_DESCRIPTION = "Create or update custom IAM policies"
 CONFIG_KEY = "policies"
-
-MC_ALIAS = "minio"
-
-
-def _mc(args: list) -> subprocess.CompletedProcess:
-    result = subprocess.run(
-        ["mc", "--json"] + args,
-        capture_output=True,
-        text=True,
-    )
-    # mc --json outputs errors to stdout as JSON, not stderr
-    if result.returncode != 0 and not result.stderr.strip():
-        for line in (result.stdout or "").splitlines():
-            try:
-                err = json.loads(line).get("error", {})
-                if isinstance(err, dict) and err.get("message"):
-                    result.stderr = err["message"]
-                    break
-                elif isinstance(err, str) and err:
-                    result.stderr = err
-                    break
-            except (json.JSONDecodeError, AttributeError):
-                continue
-    return result
 
 
 def _policy_exists(name: str) -> bool:
@@ -68,6 +50,7 @@ def run(items: list, console, **kwargs) -> dict:
 
     created = 0
     updated = 0
+    failed = 0
 
     for policy in items:
         name = policy["name"]
@@ -98,12 +81,17 @@ def run(items: list, console, **kwargs) -> dict:
                     created += 1
                     console.print(f"    [green]Created policy: {name}[/]")
             else:
-                console.print(f"    [red]Failed to apply policy {name}: {result.stderr.strip()}[/]")
+                fail(console, f"apply policy {name}: {result.stderr}")
+                failed += 1
         finally:
             os.unlink(policy_path)
 
     total = len(items)
+    msg = f"{total} policy/policies processed ({created} created, {updated} updated)"
+    if failed:
+        msg += f", {failed} failed"
     return {
         "changed": created > 0 or updated > 0,
-        "message": f"{total} policy/policies processed ({created} created, {updated} updated)",
+        "message": msg,
+        "failed": failed,
     }

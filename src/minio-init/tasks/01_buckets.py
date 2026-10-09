@@ -54,38 +54,28 @@ Notes:
     apply the same config later without any application change.
   - All operations are idempotent. Existing settings are re-applied
     (no-op if unchanged) rather than skipped.
+  - Every requested setting that cannot be applied (bucket creation,
+    versioning, quota, retention, lifecycle rule, anonymous policy) counts as a
+    failure and makes the init container exit 1. An unknown "policy" value
+    (the anonymous policy is then left as it is) and invalid CORS rules are
+    warnings.
 """
 
 import json
-import subprocess
+
+from ._mc import MC_ALIAS, fail, warn
+from ._mc import mc as _mc
 
 TASK_NAME = "Buckets"
 TASK_DESCRIPTION = "Create and configure S3 buckets"
 CONFIG_KEY = "buckets"
 
-MC_ALIAS = "minio"
-
-
-def _mc(args: list) -> subprocess.CompletedProcess:
-    result = subprocess.run(
-        ["mc", "--json"] + args,
-        capture_output=True,
-        text=True,
-    )
-    # mc --json outputs errors to stdout as JSON, not stderr
-    if result.returncode != 0 and not result.stderr.strip():
-        for line in (result.stdout or "").splitlines():
-            try:
-                err = json.loads(line).get("error", {})
-                if isinstance(err, dict) and err.get("message"):
-                    result.stderr = err["message"]
-                    break
-                elif isinstance(err, str) and err:
-                    result.stderr = err
-                    break
-            except (json.JSONDecodeError, AttributeError):
-                continue
-    return result
+# Config value -> `mc anonymous set` permission. "public" is read-only on purpose.
+ANONYMOUS_POLICIES = {
+    "private": "none",
+    "public": "download",
+    "public-readwrite": "public",
+}
 
 
 def _bucket_exists(name: str) -> bool:
@@ -204,6 +194,8 @@ def _validate_cors_rules(rules) -> list:
     return errors
 
 
+
+
 def run(items: list, console, **kwargs) -> dict:
     if not items:
         return {"skipped": True, "message": "No buckets configured"}
@@ -211,6 +203,7 @@ def run(items: list, console, **kwargs) -> dict:
     created = 0
     configured = 0
     warnings = 0
+    failed = 0
 
     for bucket in items:
         name = bucket["name"]
@@ -234,15 +227,17 @@ def run(items: list, console, **kwargs) -> dict:
                 lock_note = " (with object-lock)" if want_object_lock else ""
                 console.print(f"    [green]Created bucket: {name}{lock_note}[/]")
             else:
-                console.print(f"    [red]Failed to create bucket {name}: {result.stderr.strip()}[/]")
+                fail(console, f"create bucket {name}: {result.stderr}")
+                failed += 1
                 continue
         else:
             console.print(f"    [dim]Bucket exists: {name}[/]")
             # Warn if object-lock was requested but bucket already exists without it
             if want_object_lock:
-                console.print(
-                    f"    [yellow]Warning: object_lock requested but bucket already exists. "
-                    f"Object-lock can only be enabled at creation time.[/]"
+                warn(
+                    console,
+                    "object_lock requested but bucket already exists. "
+                    "Object-lock can only be enabled at creation time.",
                 )
                 warnings += 1
 
@@ -253,7 +248,8 @@ def run(items: list, console, **kwargs) -> dict:
             if result.returncode == 0:
                 configured += 1
             else:
-                console.print(f"    [yellow]Warning: versioning enable failed: {result.stderr.strip()}[/]")
+                fail(console, f"enable versioning on {name}: {result.stderr}")
+                failed += 1
 
         # --- Quota ---
         quota = bucket.get("quota")
@@ -265,7 +261,8 @@ def run(items: list, console, **kwargs) -> dict:
                 console.print(f"    [dim]  Quota: {quota_type} {quota_size}[/]")
                 configured += 1
             else:
-                console.print(f"    [yellow]  Quota set failed: {result.stderr.strip()}[/]")
+                fail(console, f"set quota on {name}: {result.stderr}")
+                failed += 1
 
         # --- Retention (requires object-lock) ---
         retention = bucket.get("retention")
@@ -282,9 +279,9 @@ def run(items: list, console, **kwargs) -> dict:
                 console.print(f"    [dim]  Retention: {mode} {validity}[/]")
                 configured += 1
             else:
-                console.print(f"    [yellow]  Retention set failed: {result.stderr.strip()}[/]")
-                if not want_object_lock:
-                    console.print(f"    [yellow]  Hint: retention requires object_lock to be enabled[/]")
+                hint = "" if want_object_lock else " (retention requires object_lock on the bucket)"
+                fail(console, f"set retention on {name}: {result.stderr}{hint}")
+                failed += 1
 
         # --- Lifecycle Rules ---
         lifecycle_rules = bucket.get("lifecycle_rules", [])
@@ -304,7 +301,11 @@ def run(items: list, console, **kwargs) -> dict:
 
                 if existing:
                     # Settings differ -> remove old rule first
-                    _mc(["ilm", "rule", "rm", target, "--id", existing["id"]])
+                    rm_result = _mc(["ilm", "rule", "rm", target, "--id", existing["id"]])
+                    if rm_result.returncode != 0:
+                        fail(console, f"replace lifecycle rule prefix='{prefix}' on {name}: {rm_result.stderr}")
+                        failed += 1
+                        continue
 
                 cmd = _build_ilm_add_cmd(target, rule)
                 add_result = _mc(cmd)
@@ -317,10 +318,8 @@ def run(items: list, console, **kwargs) -> dict:
                         console.print(f"    [green]  Lifecycle rule added: prefix='{prefix}'[/]")
                     configured += 1
                 else:
-                    console.print(
-                        f"    [yellow]  Lifecycle rule failed for prefix='{prefix}': "
-                        f"{add_result.stderr.strip()}[/]"
-                    )
+                    fail(console, f"add lifecycle rule prefix='{prefix}' on {name}: {add_result.stderr}")
+                    failed += 1
 
             if rules_added or rules_updated:
                 summary = []
@@ -336,19 +335,28 @@ def run(items: list, console, **kwargs) -> dict:
 
         # --- Anonymous access policy ---
         policy = bucket.get("policy", "private")
-        if policy == "private":
-            _mc(["anonymous", "set", "none", target])
-        elif policy == "public":
-            _mc(["anonymous", "set", "download", target])
-        elif policy == "public-readwrite":
-            _mc(["anonymous", "set", "public", target])
+        permission = ANONYMOUS_POLICIES.get(policy)
+        if permission is None:
+            # Unknown values were silently ignored before; stay non-destructive and
+            # leave the bucket's anonymous policy untouched, but say so.
+            warn(
+                console,
+                f"unknown policy '{policy}' on {name} - anonymous access left unchanged "
+                f"(use one of: {', '.join(ANONYMOUS_POLICIES)})",
+            )
+            warnings += 1
+        else:
+            result = _mc(["anonymous", "set", permission, target])
+            if result.returncode != 0:
+                fail(console, f"set anonymous policy '{policy}' on {name}: {result.stderr}")
+                failed += 1
 
         # --- CORS (engine-dependent; declared but not applied on MinIO) ---
         cors = bucket.get("cors")
         if cors:
             cors_errors = _validate_cors_rules(cors)
             for err in cors_errors:
-                console.print(f"    [yellow]  CORS config invalid: {err}[/]")
+                warn(console, f"CORS config invalid: {err}")
                 warnings += 1
             if not cors_errors:
                 console.print(
@@ -361,7 +369,10 @@ def run(items: list, console, **kwargs) -> dict:
     msg = f"{total} bucket(s) processed ({created} created)"
     if warnings:
         msg += f", {warnings} warning(s)"
+    if failed:
+        msg += f", {failed} failed"
     return {
         "changed": created > 0 or configured > 0,
         "message": msg,
+        "failed": failed,
     }
