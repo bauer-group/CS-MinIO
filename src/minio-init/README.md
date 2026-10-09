@@ -335,6 +335,8 @@ required.
   tests/minio-init/integration/run.sh
   ```
 
+Both run in the `Release & Docker Build` workflow on every pull request that touches `src/`, `tests/`, `config/` or `init.schema.json`, and every release waits for them.
+
 ## License
 
 MIT License - BAUER GROUP

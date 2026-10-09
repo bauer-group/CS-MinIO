@@ -13,6 +13,9 @@ on:
       - 'src/**'
       - 'docker-compose*.yml'
       - '.dockerignore'
+      - 'tests/**'
+      - 'config/**'
+      - 'init.schema.json'
   workflow_dispatch:
     inputs:
       force-release:
@@ -45,15 +48,59 @@ jobs:
       env-file: '.env.example'
 
   # ============================================
+  # MinIO Init Tests (gate every release)
+  # ============================================
+  # Consumers wait for minio-init with service_completed_successfully, so its
+  # exit status is a contract: unit tests cover every failure/skip path with a
+  # faked mc, the integration test runs the image built here against the
+  # released MinIO server image.
+
+  test-init:
+    name: 🧪 Test Init (Unit)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: '3.14'
+
+      - name: Install test dependencies
+        run: pip install -r tests/minio-init/requirements.txt
+
+      - name: Run unit tests
+        run: pytest tests/minio-init -q
+
+  test-init-integration:
+    name: 🧪 Test Init (Real MinIO)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Run integration test
+        run: tests/minio-init/integration/run.sh
+
+  # ============================================
   # Release Job (only on main branch push)
   # ============================================
 
   release:
     name: "\U0001F4E6 Create Semantic Release"
-    needs: [validate-compose]
+    needs: [validate-compose, test-init, test-init-integration]
     if: |
       (github.event_name == 'push' || github.event_name == 'workflow_dispatch') &&
-      needs.validate-compose.result == 'success'
+      needs.validate-compose.result == 'success' &&
+      needs.test-init.result == 'success' &&
+      needs.test-init-integration.result == 'success'
     uses: bauer-group/automation-templates/.github/workflows/modules-semantic-release.yml@main
     with:
       target-branch: 'main'
