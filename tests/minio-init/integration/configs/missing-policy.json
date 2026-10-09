@@ -1,0 +1,9 @@
+{
+  "_description": "Failure: a group attaches a policy that does not exist.",
+  "users": [
+    { "access_key": "it-app", "secret_key": "${IT_APP_PASSWORD}", "groups": ["gItApps"] }
+  ],
+  "groups": [
+    { "name": "gItApps", "policies": ["pItMissing"] }
+  ]
+}

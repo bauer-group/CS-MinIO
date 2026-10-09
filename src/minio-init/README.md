@@ -320,6 +320,21 @@ required.
    `mc()` and report items with `fail()`, `skip()` and `warn()` from `tasks/_mc.py`, which
    is not a task itself (a leading underscore excludes a module from discovery).
 
+## Tests
+
+- **Unit tests** fake `mc` and cover every failure and skip path:
+
+  ```bash
+  pip install -r tests/minio-init/requirements.txt
+  pytest tests/minio-init
+  ```
+
+- **Integration test** runs the image built from this directory against the released MinIO server image: a full configuration with optional items (exit 0, state checked with `mc`), the same configuration again (idempotent, duplicate lifecycle rule removed) and one broken configuration per failure class (exit 1). Needs Docker with Compose v2, `jq` and `openssl`:
+
+  ```bash
+  tests/minio-init/integration/run.sh
+  ```
+
 ## License
 
 MIT License - BAUER GROUP
