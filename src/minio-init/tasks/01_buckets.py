@@ -43,11 +43,12 @@ Notes:
     It can ONLY be set at bucket creation time. If the bucket already
     exists without object-lock, a warning is printed.
   - retention requires object_lock to be enabled on the bucket.
-  - lifecycle_rules are matched by prefix for idempotency. Existing rules
-    with the same prefix are updated if settings differ, or skipped if
-    already correct; extra copies of a configured rule (earlier versions
-    added one on every run) are removed. Rules whose prefix is not in the
-    config are not touched.
+  - lifecycle_rules are reconciled per prefix: the config owns every prefix
+    it lists. A rule with that prefix and the same expiration settings is
+    kept; every other rule with that prefix is removed - a rule whose
+    settings changed, extra copies (earlier versions added one on every
+    run), and rules added by hand, e.g. transition or tag-filtered rules.
+    Rules whose prefix is not in the config are not touched.
   - cors is an S3-compatible per-bucket CORS ruleset. It is validated here but
     NOT applied to MinIO: open-source MinIO has no per-bucket CORS API and
     enforces CORS globally via the MINIO_API_CORS_ALLOW_ORIGIN server setting
