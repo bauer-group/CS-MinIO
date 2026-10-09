@@ -7,7 +7,9 @@
 #    lifecycle rules, scoped service account, event binding).
 # 2. ok.json again, after seeding a duplicate lifecycle rule -> exit 0, nothing
 #    re-created, no restart, the duplicate removed.
-# 3. One config per failure class -> exit 1 with a "Failed:" line each.
+# 3. consumer-quirks.json - bucket values existing consumer configs use that
+#    minio-init never applied ("download", "none") -> exit 0, warning only.
+# 4. One config per failure class -> exit 1 with a "Failed:" line each.
 #
 # Needs Docker with Compose v2, jq and openssl. Secrets are generated per run.
 # Usage: tests/minio-init/integration/run.sh
@@ -69,7 +71,8 @@ has_credentials() {
   docker compose run --rm -T --no-deps --entrypoint sh init -c 'test -f "$1"' sh "/data/credentials/$1.json"
 }
 
-rule_count() { mcj ilm rule ls it/it-docs | jq -s '[.[].config.Rules[]?] | length'; }
+rule_count() { mcj ilm rule ls "it/${1:-it-docs}" | jq -s '[.[].config.Rules[]?] | length'; }
+bucket_is_private() { mcj anonymous get "it/$1" | jq -e '.permission == "private"' >/dev/null; }
 group_holds_app() {
   mcj admin group info it gItApps |
     jq -e '(.members | index("it-app")) and (.groupPolicy | split(",") | index("pItDocs"))' >/dev/null
@@ -123,7 +126,18 @@ check "notification target unchanged, no restart" logged run2.log "Target unchan
 check "no service account created" not logged run2.log "Created service account"
 
 # -----------------------------------------------------------------------------
-echo "== 3. Real failures exit 1"
+echo "== 3. Values from existing consumer configs stay non-fatal"
+rc=0
+run_init consumer-quirks.json quirks.log || rc=$?
+check "consumer-quirks.json exits 0" test "$rc" -eq 0
+check "policy 'download' only warns" logged quirks.log "Warning: unknown policy 'download' on it-ota"
+check "policy 'none' only warns" logged quirks.log "Warning: unknown policy 'none' on it-canva"
+check "it-ota keeps private anonymous access" bucket_is_private it-ota
+check "it-ota gets its lifecycle rule" test "$(rule_count it-ota)" -eq 1
+check "nothing failed" not logged quirks.log "Failed"
+
+# -----------------------------------------------------------------------------
+echo "== 4. Real failures exit 1"
 expect_failure() { # expect_failure <config> <text expected after "Failed: ">
   local config=$1 text=$2 rc=0
   run_init "$config" "$config.log" || rc=$?

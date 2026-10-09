@@ -1,0 +1,20 @@
+{
+  "_description": "Values that existing consumer configs use and minio-init never applied (IP-OTA-Platform: policy download plus an unsupported lifecycle key; IP-CanvaERPConnect: policy none). They must stay non-fatal: warning only, anonymous access unchanged.",
+  "buckets": [
+    {
+      "name": "it-ota",
+      "region": "eu-central-1",
+      "versioning": true,
+      "policy": "download",
+      "lifecycle_rules": [
+        { "prefix": "", "noncurrent_expire_days": 90, "abort_incomplete_multipart_upload_days": 1 }
+      ]
+    },
+    {
+      "name": "it-canva",
+      "region": "eu-central-1",
+      "versioning": true,
+      "policy": "none"
+    }
+  ]
+}
