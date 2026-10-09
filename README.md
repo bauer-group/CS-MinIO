@@ -267,7 +267,7 @@ Virtual-host-style bucket access (e.g., `bucket.s3.example.com`) is prepared but
 │   │   ├── release/                   # Semantic release configuration
 │   │   └── docker-base-image-monitor/ # Base image monitoring
 │   └── workflows/
-│       ├── docker-release.yml         # Build, release, push images
+│       ├── docker-release.yml         # Test init, build, release, push images
 │       ├── docker-maintenance.yml     # Auto-merge Dependabot PRs
 │       ├── check-base-images.yml      # Daily base image update check
 │       ├── teams-notifications.yml    # Microsoft Teams notifications
@@ -329,7 +329,7 @@ The repository uses [semantic-release](https://github.com/semantic-release/seman
 
 **Automated pipeline:**
 
-1. Push to `main` triggers validation (compose files)
+1. Push to `main` triggers validation (compose files) and the minio-init unit and integration tests (real MinIO server); a release is only created when all of them pass. Pull requests that touch `src/`, `tests/`, `config/` or `init.schema.json` run the same tests
 2. Semantic release creates version tag and GitHub release
 3. All four Docker images (server, init, console, worker) are built and pushed to GHCR and Docker Hub
 4. Dependabot monitors base images weekly; auto-merges updates
