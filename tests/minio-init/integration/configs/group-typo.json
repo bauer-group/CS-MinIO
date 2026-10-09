@@ -1,0 +1,9 @@
+{
+  "_description": "Failure: a group no configured user is in - it-app lists gItApps, the group entry says gItApp (pItDocs exists from ok.json).",
+  "users": [
+    { "access_key": "it-app", "secret_key": "${IT_APP_PASSWORD}", "groups": ["gItApps"] }
+  ],
+  "groups": [
+    { "name": "gItApp", "policies": ["pItDocs"] }
+  ]
+}
