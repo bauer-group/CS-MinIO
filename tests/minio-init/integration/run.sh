@@ -145,6 +145,7 @@ expect_failure() { # expect_failure <config> <text expected after "Failed: ">
   check "$config reports: $text" logged "$config.log" "Failed: $text"
 }
 expect_failure missing-policy.json "attach policy pItMissing to group gItApps"
+expect_failure group-typo.json "group 'gItApp' does not exist: no configured user is in it"
 expect_failure short-secret.json "create user it-short"
 expect_failure missing-sa-policy.json "create service account it-unscoped (parent: it-app): read policy pItMissing"
 expect_failure retention-without-lock.json "set retention on it-docs"

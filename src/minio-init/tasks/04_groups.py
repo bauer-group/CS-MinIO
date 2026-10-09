@@ -19,11 +19,19 @@ JSON config example:
   ]
 }
 
-MinIO only knows a group once it has a member. A group whose users were all
-skipped (optional users with an empty secret) or that has no users at all
-therefore does not exist yet: it is reported as skipped, not failed - there is
-nobody the policies could apply to. Any other attach error (e.g. a policy that
-does not exist) is a failure and the init container exits 1.
+MinIO only knows a group once it has a member, so attaching a policy to a
+group nobody was added to fails with "group does not exist". The users task
+records which groups its skipped and failed users should be in; with that:
+  - every configured user of the group was skipped (optional users with an
+    empty secret, or the root user) -> skipped, not failed: there is nobody
+    the policies could apply to yet;
+  - a configured user of the group could not be created or added -> failed
+    (that user's own failure is reported above);
+  - no configured user lists the group, e.g. a typo between a user's "groups"
+    and the group's "name" -> failed. Exiting 0 here would leave that user
+    without the group's permissions.
+Any other attach error (e.g. a policy that does not exist) is a failure as
+well, and the init container exits 1.
 """
 
 from ._mc import MC_ALIAS, fail, skip
@@ -42,6 +50,10 @@ def _is_missing_group(error: str) -> bool:
 def run(items: list, console, **kwargs) -> dict:
     if not items:
         return {"skipped": True, "message": "No groups configured"}
+
+    context = kwargs.get("context", {})
+    skipped_user_groups = context.get("skipped_user_groups", set())
+    failed_user_groups = context.get("failed_user_groups", set())
 
     created = 0
     configured = 0
@@ -65,13 +77,21 @@ def run(items: list, console, **kwargs) -> dict:
                 console.print(f"    [dim]  Attached policy: {policy_name} → {name}[/]")
                 configured += 1
             elif _is_missing_group(result.stderr):
-                skip(
-                    console,
-                    f"group '{name}' has no members (its users were skipped or none are "
-                    f"configured) - policies not attached",
-                )
-                skipped += 1
-                status = "skipped"
+                if name in failed_user_groups:
+                    fail(console, f"group '{name}' does not exist: adding its users failed (see above) "
+                                  f"- policies not attached")
+                    failed += 1
+                    status = "failed"
+                elif name in skipped_user_groups:
+                    skip(console, f"group '{name}' has no members: its users were all skipped "
+                                  f"- policies not attached")
+                    skipped += 1
+                    status = "skipped"
+                else:
+                    fail(console, f"group '{name}' does not exist: no configured user is in it "
+                                  f"(typo in a user's \"groups\"?) - policies not attached")
+                    failed += 1
+                    status = "failed"
                 break
             else:
                 fail(console, f"attach policy {policy_name} to group {name}: {result.stderr}")

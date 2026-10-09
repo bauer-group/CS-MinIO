@@ -46,6 +46,7 @@ The summary line ends either in `Initialization complete (…)` or in `Initializ
 - a bucket that cannot be created, or versioning, quota, retention, a lifecycle rule or the anonymous policy that cannot be applied to it
 - a policy that cannot be created or updated
 - a user MinIO rejects (e.g. a secret shorter than 8 characters), a group membership or a policy attachment that fails (e.g. the policy does not exist)
+- a group that no configured user lists in its `groups` - typically a typo between a user's `groups` and the group's `name`, which would otherwise leave that user without the group's permissions - or whose users could not be created or added
 - a service account that cannot be created, whose scoped `policy` cannot be read, or whose generated credentials cannot be read back
 - an invalid notification `id`, a target MinIO rejects although its endpoint is reachable, MinIO not healthy again after the restart, a target still inactive after it, or an event binding that cannot be set
 - a `${VAR}` placeholder whose variable is not set at all, and a task module that cannot be loaded
@@ -55,13 +56,13 @@ The summary line ends either in `Initialization complete (…)` or in `Initializ
 | Item            | Skipped when                                                                                                                                                                                                                  |
 | --------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | User            | `access_key` or `secret_key` is an empty string, e.g. `"${BACKUP_PASSWORD}"` with `BACKUP_PASSWORD=` set but empty (Compose also passes an unset variable as empty). Also the root user (`MINIO_ROOT_USER`), which is not an IAM user |
-| Group           | It has no `policies`, or no members: MinIO only knows a group once a user was added to it, so a group whose users were all skipped is skipped too                                                                            |
+| Group           | It has no `policies`, or every configured user that lists it was skipped (see User): MinIO only knows a group once a user was added to it. A group that no configured user lists fails instead (see above)                    |
 | Service account | Its parent `user` was skipped or is an empty string                                                                                                                                                                           |
 | Notification    | It has no `endpoint`, or MinIO refuses the target because the endpoint is not reachable (the receiver, e.g. the opt-in `minio-worker`, is not running). Its bindings are skipped with it; the next start registers it          |
 
 **Warnings (exit 0):** `object_lock` requested for a bucket that already exists, invalid `cors` rules, and an unknown bucket `policy` value (the bucket's anonymous access is then left unchanged).
 
-**Upgrading from a version that always exited 0:** earlier versions logged most of these failures but still exited 0, so a misconfiguration could go unnoticed while dependent services started anyway. If `minio-init` now exits 1, `docker compose logs minio-init` names every failed item. Fix the configuration (for example a secret shorter than 8 characters or a misspelled policy name) and run `docker compose up -d` again.
+**Upgrading from a version that always exited 0:** earlier versions logged most of these failures but still exited 0, so a misconfiguration could go unnoticed while dependent services started anyway. If `minio-init` now exits 1, `docker compose logs minio-init` names every failed item. Fix the configuration (for example a secret shorter than 8 characters, a misspelled policy name, or a group `name` that differs from what the users list in `groups`) and run `docker compose up -d` again.
 
 ## JSON Configuration Schema
 
@@ -289,7 +290,7 @@ still starting), the target is set once more; a target MinIO still rejects is a 
 | 05    | Service Accounts | `service_accounts` | Create service accounts with dynamic credentials        |
 | 06    | Notifications    | `notifications`    | Configure webhook targets and bucket/event bindings     |
 
-> **Note:** Users (03) run before groups (04). Groups are implicitly created when users are added via `mc admin group add`. The groups task then attaches policies via `mc admin policy attach --group`. This ordering ensures policy attachments persist (group membership updates cannot overwrite them). A group nobody was added to does not exist in MinIO, so its policies cannot be attached: it is reported as skipped.
+> **Note:** Users (03) run before groups (04). Groups are implicitly created when users are added via `mc admin group add`. The groups task then attaches policies via `mc admin policy attach --group`. This ordering ensures policy attachments persist (group membership updates cannot overwrite them). A group nobody was added to does not exist in MinIO, so its policies cannot be attached: it is reported as skipped when every configured user that lists it was skipped, and as failed otherwise (no configured user lists it, or its users could not be added).
 
 > **Note:** The init container is additive only - it creates and updates resources but does not remove them. To delete buckets, policies, users, or groups, use the admin console or `mc` CLI directly.
 

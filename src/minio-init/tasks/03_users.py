@@ -25,6 +25,11 @@ string (e.g. "${BACKUP_PASSWORD}" with the variable left empty) is skipped, not
 failed, and so are the service accounts that belong to it. Every other error
 (rejected secret, unknown group or policy) is a failure and the init container
 exits 1.
+
+The groups of skipped and of failed users are recorded in the run context
+(skipped_user_groups, failed_user_groups). The groups task needs them to tell
+a group whose users were all skipped (optional) from one that no configured
+user is in, e.g. a typo in a user's "groups" (fatal).
 """
 
 import os
@@ -41,8 +46,12 @@ def run(items: list, console, **kwargs) -> dict:
     if not items:
         return {"skipped": True, "message": "No users configured"}
 
+    context = kwargs.get("context", {})
     # Shared with the service-accounts task, which skips accounts of skipped users.
-    skipped_users = kwargs.get("context", {}).setdefault("skipped_users", set())
+    skipped_users = context.setdefault("skipped_users", set())
+    # Shared with the groups task (see the module docstring).
+    skipped_user_groups = context.setdefault("skipped_user_groups", set())
+    failed_user_groups = context.setdefault("failed_user_groups", set())
 
     created = 0
     skipped = 0
@@ -52,17 +61,20 @@ def run(items: list, console, **kwargs) -> dict:
     for user in items:
         access_key = user["access_key"]
         secret_key = user["secret_key"]
+        user_groups = user.get("groups", [])
 
         if not access_key or not secret_key:
             empty = "access_key" if not access_key else "secret_key"
             skip(console, f"user '{access_key}': {empty} is empty - optional user not created")
             skipped_users.add(access_key)
+            skipped_user_groups.update(user_groups)
             skipped += 1
             continue
 
         # Skip root user - cannot be managed as IAM user
         if access_key == root_user:
             skip(console, f"'{access_key}': this is the root user (MINIO_ROOT_USER), not an IAM user")
+            skipped_user_groups.update(user_groups)
             skipped += 1
             continue
 
@@ -74,16 +86,18 @@ def run(items: list, console, **kwargs) -> dict:
             console.print(f"    [green]Created/updated user: {access_key}[/]")
         else:
             fail(console, f"create user {access_key}: {result.stderr}")
+            failed_user_groups.update(user_groups)
             failed += 1
             continue
 
         # Add to groups (groups created implicitly, policies attached by 04_groups task)
-        for group_name in user.get("groups", []):
+        for group_name in user_groups:
             result = _mc(["admin", "group", "add", MC_ALIAS, group_name, access_key])
             if result.returncode == 0:
                 console.print(f"    [dim]  Added to group: {group_name}[/]")
             else:
                 fail(console, f"add user {access_key} to group {group_name}: {result.stderr}")
+                failed_user_groups.add(group_name)
                 failed += 1
 
         # Attach direct policies (mc reports an already attached policy as success)

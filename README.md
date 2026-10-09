@@ -125,7 +125,7 @@ The init container processes two configuration files in order:
 
 All operations are idempotent. The init container runs on every start.
 
-**Exit status:** the init container exits 1 if any configured item fails (a bucket, policy, user, group attachment, service account or notification that cannot be applied) and 0 otherwise. Intentionally optional items - a user whose `access_key` or `secret_key` is empty, a group without members, a notification whose receiver is not running - are logged as `Skipped:` and do not fail the run. Dependent services can therefore wait for it with `condition: service_completed_successfully`. See [src/minio-init/README.md](src/minio-init/README.md#exit-status) for the full list and upgrade notes.
+**Exit status:** the init container exits 1 if any configured item fails (a bucket, policy, user, group attachment, service account or notification that cannot be applied) and 0 otherwise. Intentionally optional items - a user whose `access_key` or `secret_key` is empty, a group whose users were all skipped, a notification whose receiver is not running - are logged as `Skipped:` and do not fail the run. Dependent services can therefore wait for it with `condition: service_completed_successfully`. See [src/minio-init/README.md](src/minio-init/README.md#exit-status) for the full list and upgrade notes.
 
 **Supported resources:**
 

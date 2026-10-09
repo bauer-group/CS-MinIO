@@ -223,16 +223,59 @@ def test_root_user_is_skipped(mc, console, monkeypatch):
 
 # --- groups -----------------------------------------------------------------
 
-def test_group_without_members_is_skipped(mc, console):
+def _users_then_groups(mc, console, user_items, group_items):
+    """Users task, then groups task with one shared context (as main runs them).
+
+    Every group policy attach answers "group does not exist": none of the
+    configured users ended up in the group.
+    """
+    context = {}
+    users.run(user_items, console, context=context)
     mc.fail("admin", "policy", "attach", message="Unable to make user/group policy association",
             cause=NO_SUCH_GROUP)
+    return groups.run(group_items, console, context=context)
 
-    result = groups.run([{"name": "gBackup", "policies": ["pBackup", "pOther"]}], console)
+
+@pytest.mark.parametrize("access_key, has_secret", [("backup", False), ("root", True)],
+                         ids=["empty-secret", "root-user"])
+def test_group_whose_users_were_all_skipped_is_skipped(mc, console, monkeypatch, access_key, has_secret):
+    # The root user case is the built-in default with CONSOLE_USER == MINIO_ROOT_USER.
+    monkeypatch.setenv("MINIO_ROOT_USER", "root")
+    member = {"access_key": access_key, "secret_key": random_secret() if has_secret else "",
+              "groups": ["gBackup"]}
+
+    result = _users_then_groups(mc, console, [member], [{"name": "gBackup", "policies": ["pBackup", "pOther"]}])
 
     assert result["failed"] == 0
     assert result["items_skipped"] == 1
     assert len(mc.called("admin", "policy", "attach")) == 1
-    assert "Skipped: group 'gBackup' has no members" in output(console)
+    assert "Skipped: group 'gBackup' has no members: its users were all skipped" in output(console)
+
+
+@pytest.mark.parametrize("user_items", [
+    [{"access_key": "app", "secret_key": random_secret(), "groups": ["gApp"]}],  # typo: gApp vs gAPP
+    [{"access_key": "app", "secret_key": random_secret()}],                      # user lists no group
+    [],                                                                           # no users configured
+], ids=["typo", "not-listed", "no-users"])
+def test_group_no_configured_user_is_in_is_fatal(mc, console, user_items):
+    result = _users_then_groups(mc, console, user_items, [{"name": "gAPP", "policies": ["pApp"]}])
+
+    assert result["failed"] == 1 and result["items_skipped"] == 0
+    assert "Failed: group 'gAPP' does not exist: no configured user is in it" in output(console)
+
+
+@pytest.mark.parametrize("failing_call", [("admin", "user", "add"), ("admin", "group", "add")])
+def test_group_whose_users_could_not_be_added_is_fatal(mc, console, failing_call):
+    mc.fail(*failing_call)
+    user_items = [
+        {"access_key": "app", "secret_key": random_secret(), "groups": ["gApp"]},
+        {"access_key": "backup", "secret_key": "", "groups": ["gApp"]},  # skipped does not outweigh failed
+    ]
+
+    result = _users_then_groups(mc, console, user_items, [{"name": "gApp", "policies": ["pApp"]}])
+
+    assert result["failed"] == 1 and result["items_skipped"] == 0
+    assert "Failed: group 'gApp' does not exist: adding its users failed" in output(console)
 
 
 def test_group_attach_of_missing_policy_is_fatal(mc, console):
