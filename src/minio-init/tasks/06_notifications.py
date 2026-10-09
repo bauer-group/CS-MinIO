@@ -52,6 +52,8 @@ Failures vs. skips:
     while its endpoint is unreachable from here (MinIO tests the connection when the
     target is set): the receiver - e.g. the opt-in minio-worker - is not running. Its
     bindings are skipped with it; the next start registers it once the endpoint is up.
+  - If the endpoint turns out to be reachable after MinIO refused the target, the receiver
+    has probably just finished starting next to us: the target is set once more.
   - Everything else is a failure and the init container exits 1: an invalid id, a target
     MinIO rejects although its endpoint is reachable, MinIO not healthy again after the
     restart, a target that is still not active after it, or a binding that cannot be set.
@@ -307,6 +309,13 @@ def run(items: list, console, **kwargs) -> dict:
         cmd = ["admin", "config", "set", MC_ALIAS, f"notify_webhook:{target_id}"]
         cmd += [f"{k}={v}" for k, v in kv.items()]
         res = _mc(cmd)
+        unreachable = False
+        if res.returncode != 0:
+            unreachable = _endpoint_unreachable(entry["endpoint"])
+            if not unreachable:
+                # Reachable now: the receiver may have finished starting while MinIO
+                # tested it (it starts next to us). One more attempt decides.
+                res = _mc(cmd)
         if res.returncode == 0:
             targets_set += 1
             restart_required = True
@@ -314,7 +323,7 @@ def run(items: list, console, **kwargs) -> dict:
             console.print(f"    [green]Target configured: {target_id}[/]")
             valid.append(entry)
             applied.append(target_id)
-        elif _endpoint_unreachable(entry["endpoint"]):
+        elif unreachable:
             skip(
                 console,
                 f"notification '{target_id}': endpoint {entry['endpoint']} is not reachable "
