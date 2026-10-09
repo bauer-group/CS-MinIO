@@ -86,6 +86,83 @@ def test_object_lock_on_existing_bucket_and_invalid_cors_only_warn(mc, console):
     assert "Warning: CORS config invalid" in output(console)
 
 
+def _ilm_ls(mc, *rules):
+    """`mc ilm rule ls --json` output (minio-go lifecycle JSON, empty values omitted)."""
+    mc.on("ilm", "rule", "ls", stdout=json.dumps(
+        {"status": "success", "target": "minio/docs", "config": {"Rules": list(rules)}}))
+
+
+def _rule(rule_id, prefix, days=None, noncurrent=None):
+    rule = {"ID": rule_id, "Status": "Enabled"}
+    if prefix:
+        rule["Filter"] = {"Prefix": prefix}
+    if days:
+        rule["Expiration"] = {"Days": days}
+    if noncurrent:
+        rule["NoncurrentVersionExpiration"] = {"NoncurrentDays": noncurrent}
+    return rule
+
+
+LIFECYCLE = [{"prefix": "daily/", "expire_days": 15}, {"prefix": "", "noncurrent_expire_days": 90}]
+
+
+def test_matching_lifecycle_rules_are_left_alone(mc, console):
+    _ilm_ls(mc, _rule("a1", "daily/", days=15), _rule("b1", "", noncurrent=90))
+
+    result = buckets.run([{"name": "docs", "lifecycle_rules": LIFECYCLE}], console)
+
+    assert result["failed"] == 0
+    assert not mc.called("ilm", "rule", "add")
+    assert not mc.called("ilm", "rule", "rm")
+    assert "2 rule(s) already configured" in output(console)
+
+
+def test_lifecycle_duplicates_from_earlier_runs_are_removed(mc, console):
+    _ilm_ls(mc, _rule("a1", "daily/", days=15), _rule("a2", "daily/", days=15),
+            _rule("a3", "daily/", days=15), _rule("b1", "", noncurrent=90))
+
+    result = buckets.run([{"name": "docs", "lifecycle_rules": LIFECYCLE}], console)
+
+    assert result["failed"] == 0
+    assert mc.called("ilm", "rule", "rm") == [
+        ["ilm", "rule", "rm", "--id", "a2", "minio/docs"],
+        ["ilm", "rule", "rm", "--id", "a3", "minio/docs"],
+    ]
+    assert not mc.called("ilm", "rule", "add")
+
+
+def test_changed_lifecycle_rule_replaces_the_old_one(mc, console):
+    _ilm_ls(mc, _rule("a1", "daily/", days=10), _rule("b1", "", noncurrent=90), _rule("c1", "manual/", days=1))
+
+    result = buckets.run([{"name": "docs", "lifecycle_rules": LIFECYCLE}], console)
+
+    assert result["failed"] == 0
+    assert mc.called("ilm", "rule", "rm") == [["ilm", "rule", "rm", "--id", "a1", "minio/docs"]]
+    assert mc.called("ilm", "rule", "add") == [
+        ["ilm", "rule", "add", "--prefix", "daily/", "--expire-days", "15", "minio/docs"],
+    ]
+
+
+def test_bucket_without_lifecycle_gets_all_rules(mc, console):
+    mc.fail("ilm", "rule", "ls", message="Unable to ls lifecycle configuration",
+            cause="lifecycle configuration not set")
+
+    result = buckets.run([{"name": "docs", "lifecycle_rules": LIFECYCLE}], console)
+
+    assert result["failed"] == 0
+    assert len(mc.called("ilm", "rule", "add")) == 2
+
+
+def test_lifecycle_rule_that_cannot_be_removed_is_fatal(mc, console):
+    _ilm_ls(mc, _rule("a1", "daily/", days=10))
+    mc.fail("ilm", "rule", "rm")
+
+    result = buckets.run([{"name": "docs", "lifecycle_rules": LIFECYCLE[:1]}], console)
+
+    assert result["failed"] == 1
+    assert not mc.called("ilm", "rule", "add")
+
+
 # --- policies ---------------------------------------------------------------
 
 def test_policy_that_cannot_be_created_is_fatal(mc, console):

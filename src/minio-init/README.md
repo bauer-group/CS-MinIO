@@ -155,7 +155,7 @@ The summary line ends either in `Initialization complete (…)` or in `Initializ
 
 \*At least one of `expire_days` or `noncurrent_expire_days` is required.
 
-Lifecycle rules are matched by prefix for idempotency. On re-run, existing rules with the same prefix are updated if settings differ, or left unchanged if already correct. Rules not present in the config are not removed (additive-only).
+Lifecycle rules are matched by prefix for idempotency. On re-run, existing rules with the same prefix are updated if settings differ, or left unchanged if already correct. Extra copies of a configured rule are removed - earlier versions could not read `mc ilm rule ls` and added every rule again on each start, so long-running buckets may hold many identical rules that the first run of this version cleans up. Rules whose prefix is not in the config are not removed (additive-only).
 
 **CORS rules:** Each rule in the `cors` array is an S3-compatible CORS rule:
 
