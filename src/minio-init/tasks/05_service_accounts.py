@@ -32,6 +32,10 @@ Notes:
   - The output directory defaults to /data/credentials/ and can be
     overridden via the MINIO_CREDENTIALS_DIR environment variable.
   - Other containers can mount the same volume to read credentials.
+  - "policy" restricts the account to that named policy: its document is
+    exported with `mc admin policy info --policy-file` and passed to
+    `svcacct add --policy`. Without "policy" the account inherits the
+    parent user's permissions.
   - A service account whose parent user was skipped (optional user with an
     empty secret) or resolves to an empty name is skipped as well. Any other
     error (unknown parent user, unreadable policy, credentials that cannot be
@@ -92,43 +96,31 @@ def _write_credentials(sa_name: str, credentials: dict) -> str:
 
 
 def _create_sa(cmd: list, sa_policy: str | None) -> subprocess.CompletedProcess:
-    """Create a service account, optionally with a scoped policy.
+    """Create a service account, optionally restricted to a named policy.
 
-    Handles temp file creation and cleanup for the policy document.
+    `mc admin policy info --policy-file` exports the raw IAM document, which
+    `svcacct add --policy` expects. A policy that cannot be exported fails the
+    account rather than creating it with the parent user's full permissions.
     """
-    policy_path = None
-
-    try:
-        if sa_policy and isinstance(sa_policy, str):
-            # Fetch the named policy document from MinIO
-            policy_result = _mc(["admin", "policy", "info", MC_ALIAS, sa_policy])
-            if policy_result.returncode != 0:
-                policy_result.stderr = f"read policy {sa_policy}: {policy_result.stderr}"
-                return policy_result
-
-            # mc --json wraps output in metadata; extract the raw IAM policy
-            policy_doc = None
-            for line in policy_result.stdout.strip().splitlines():
-                try:
-                    data = json.loads(line)
-                    if "policyJSON" in data:
-                        policy_doc = data["policyJSON"]
-                        break
-                except json.JSONDecodeError:
-                    continue
-
-            if policy_doc:
-                with tempfile.NamedTemporaryFile(
-                    mode="w", suffix=".json", delete=False, prefix="sa-policy-"
-                ) as f:
-                    json.dump(policy_doc, f, indent=2)
-                    policy_path = f.name
-                cmd.extend(["--policy", policy_path])
-
+    if not sa_policy:
         return _mc(cmd)
+    if not isinstance(sa_policy, str):
+        return subprocess.CompletedProcess(cmd, 1, stdout="", stderr="policy must be the name of a policy")
+
+    fd, policy_path = tempfile.mkstemp(suffix=".json", prefix="sa-policy-")
+    os.close(fd)
+    try:
+        exported = _mc(["admin", "policy", "info", MC_ALIAS, sa_policy, "--policy-file", policy_path])
+        if exported.returncode != 0:
+            exported.stderr = f"read policy {sa_policy}: {exported.stderr}"
+            return exported
+        if os.path.getsize(policy_path) == 0:
+            return subprocess.CompletedProcess(
+                cmd, 1, stdout="", stderr=f"read policy {sa_policy}: mc exported an empty document"
+            )
+        return _mc(cmd + ["--policy", policy_path])
     finally:
-        if policy_path:
-            os.unlink(policy_path)
+        os.unlink(policy_path)
 
 
 def run(items: list, console, **kwargs) -> dict:

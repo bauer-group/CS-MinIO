@@ -39,11 +39,14 @@ class FakeMC:
 
     def __init__(self):
         self.calls: list[list[str]] = []
-        self._rules: list[tuple[tuple, int, str]] = []
+        self._rules: list[tuple[tuple, int, str, object]] = []
 
-    def on(self, *prefix: str, rc: int = 0, stdout: str = "") -> "FakeMC":
-        """Answer calls whose arguments start with `prefix` (later rules win)."""
-        self._rules.insert(0, (prefix, rc, stdout))
+    def on(self, *prefix: str, rc: int = 0, stdout: str = "", effect=None) -> "FakeMC":
+        """Answer calls whose arguments start with `prefix` (later rules win).
+
+        `effect(args)` runs on a match, e.g. to write the file mc would write.
+        """
+        self._rules.insert(0, (prefix, rc, stdout, effect))
         return self
 
     def fail(self, *prefix: str, message: str = "Unable to complete the request", cause: str = "") -> "FakeMC":
@@ -56,8 +59,10 @@ class FakeMC:
         assert cmd[0] == "mc", f"unexpected command {cmd}"
         mc_args = [a for a in cmd[1:] if a != "--json"]
         self.calls.append(mc_args)
-        for prefix, rc, stdout in self._rules:
+        for prefix, rc, stdout, effect in self._rules:
             if tuple(mc_args[: len(prefix)]) == prefix:
+                if effect:
+                    effect(mc_args)
                 # mc prints the error document on stdout and only a newline on stderr
                 return subprocess.CompletedProcess(cmd, rc, stdout=stdout, stderr="\n" if rc else "")
         return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
