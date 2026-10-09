@@ -331,7 +331,7 @@ required.
   pytest tests/minio-init
   ```
 
-- **Integration test** runs the image built from this directory against the released MinIO server image: a full configuration with optional items (exit 0, state checked with `mc`), the same configuration again (idempotent, duplicate lifecycle rule removed) and one broken configuration per failure class (exit 1). Needs Docker with Compose v2, `jq` and `openssl`:
+- **Integration test** runs the image built from this directory against the released MinIO server image: a full configuration with optional items (exit 0, state checked with `mc`), the same configuration again (idempotent, duplicate lifecycle rule removed), bucket values existing consumer configs use that are only warnings (exit 0) and one broken configuration per failure class (exit 1). Needs Docker with Compose v2, `jq` and `openssl`:
 
   ```bash
   tests/minio-init/integration/run.sh
