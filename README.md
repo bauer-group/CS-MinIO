@@ -269,9 +269,7 @@ Virtual-host-style bucket access (e.g., `bucket.s3.example.com`) is prepared but
 │   └── workflows/
 │       ├── docker-release.yml         # Test init, build, release, push images
 │       ├── docker-maintenance.yml     # Auto-merge Dependabot PRs
-│       ├── check-base-images.yml      # Daily base image update check
-│       ├── teams-notifications.yml    # Microsoft Teams notifications
-│       └── ai-issue-summary.yml       # AI-powered issue summaries
+│       └── check-base-images.yml      # Daily base image update check
 ├── src/
 │   ├── minio/                         # MinIO server image (built from source)
 │   │   ├── Dockerfile                 # Go build → Alpine runtime
