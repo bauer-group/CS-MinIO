@@ -45,7 +45,8 @@ Idempotency (critical):
     (`arn:minio:sqs:<region>:<id>:webhook`), so a hardcoded empty-region ARN fails with
     "Unable to enable notification on the specified bucket" once MINIO_SITE_REGION is set,
     even though the target is registered. We resolve the real ARN from `info.sqsARN`.
-  - Additive only: bindings not present in the config are left untouched (like lifecycle).
+  - Additive only: bindings not present in the config are left untouched (unlike
+    lifecycle rules, which the buckets task reconciles per configured prefix).
 
 Failures vs. skips:
   - An entry without an endpoint is skipped. So is a target MinIO refuses to register

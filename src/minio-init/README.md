@@ -62,7 +62,7 @@ The summary line ends either in `Initialization complete (…)` or in `Initializ
 
 **Warnings (exit 0):** `object_lock` requested for a bucket that already exists, invalid `cors` rules, and an unknown bucket `policy` value (the bucket's anonymous access is then left unchanged).
 
-**Upgrading from a version that always exited 0:** earlier versions logged most of these failures but still exited 0, so a misconfiguration could go unnoticed while dependent services started anyway. If `minio-init` now exits 1, `docker compose logs minio-init` names every failed item. Fix the configuration (for example a secret shorter than 8 characters, a misspelled policy name, or a group `name` that differs from what the users list in `groups`) and run `docker compose up -d` again.
+**Upgrading from a version that always exited 0:** earlier versions logged most of these failures but still exited 0, so a misconfiguration could go unnoticed while dependent services started anyway. If `minio-init` now exits 1, `docker compose logs minio-init` names every failed item. Fix the configuration (for example a secret shorter than 8 characters, a misspelled policy name, or a group `name` that differs from what the users list in `groups`) and run `docker compose up -d` again. One case to check before upgrading: `retention` on a bucket that already existed without object lock (`object_lock` only takes effect when a bucket is created). Earlier versions logged `Retention set failed` and carried on; now it is a failure. Remove `retention` from that bucket's entry, or move the data to a new bucket created with `object_lock`.
 
 ## JSON Configuration Schema
 
@@ -166,7 +166,7 @@ In a Compose inline `configs:` block write `"$$schema"`, because Compose would o
 
 \*At least one of `expire_days` or `noncurrent_expire_days` is required.
 
-Lifecycle rules are matched by prefix for idempotency. On re-run, existing rules with the same prefix are updated if settings differ, or left unchanged if already correct. Extra copies of a configured rule are removed - earlier versions could not read `mc ilm rule ls` and added every rule again on each start, so long-running buckets may hold many identical rules that the first run of this version cleans up. Rules whose prefix is not in the config are not removed (additive-only).
+Lifecycle rules are reconciled per prefix: the config owns every prefix it lists. An existing rule with that prefix and the same expiration settings (`expire_days`, `noncurrent_expire_days`, `expire_delete_marker` - nothing else is compared) is kept. Every other rule with that prefix is removed, and missing configured rules are added. This replaces a rule whose settings changed and removes the extra copies earlier versions left behind - they could not read `mc ilm rule ls` and added every rule again on each start, so the first run of this version may log `Lifecycle: N outdated or duplicate removed`. It also removes rules added by hand under a listed prefix, including transition and tag-filtered rules (a rule without a prefix counts as prefix `""`). Keep such rules under a prefix the config does not list. Rules whose prefix is not in the config are left alone.
 
 **CORS rules:** Each rule in the `cors` array is an S3-compatible CORS rule:
 
@@ -194,7 +194,7 @@ Lifecycle rules are matched by prefix for idempotency. On re-run, existing rules
 | `versioning`      | Applied    | Applied                            |
 | `quota`           | Applied    | Updated                            |
 | `retention`       | Applied    | Updated                            |
-| `lifecycle_rules` | Applied    | Updated (per-prefix idempotent)    |
+| `lifecycle_rules` | Applied    | Reconciled per listed prefix       |
 | `policy`          | Applied    | Updated                            |
 | `cors`            | Declared   | No-op on MinIO (engine-dependent)  |
 
@@ -292,7 +292,7 @@ still starting), the target is set once more; a target MinIO still rejects is a 
 
 > **Note:** Users (03) run before groups (04). Groups are implicitly created when users are added via `mc admin group add`. The groups task then attaches policies via `mc admin policy attach --group`. This ordering ensures policy attachments persist (group membership updates cannot overwrite them). A group nobody was added to does not exist in MinIO, so its policies cannot be attached: it is reported as skipped when every configured user that lists it was skipped, and as failed otherwise (no configured user lists it, or its users could not be added).
 
-> **Note:** The init container is additive only - it creates and updates resources but does not remove them. To delete buckets, policies, users, or groups, use the admin console or `mc` CLI directly.
+> **Note:** The init container creates and updates resources but does not delete buckets, policies, users, groups, service accounts or event bindings. To remove them, use the admin console or the `mc` CLI directly. The one exception is lifecycle rules: under a prefix the config lists, rules that do not match a configured rule are removed (see [Bucket Options](#bucket-options)).
 
 ## Environment Variables
 
