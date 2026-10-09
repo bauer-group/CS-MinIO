@@ -333,10 +333,13 @@ def test_service_account_with_unreadable_policy_is_fatal(mc, console, credential
     assert not mc.called("admin", "user", "svcacct", "add")
 
 
-def test_service_account_credentials_are_written(mc, console, credentials_dir):
+@pytest.mark.parametrize("indent", [None, 1], ids=["compact", "indented"])
+def test_service_account_credentials_are_written(mc, console, credentials_dir, indent):
+    # mc prints the result compactly today; an indented document must work as well.
     access_key, secret_key = random_secret(), random_secret()
     mc.on("admin", "user", "svcacct", "add",
-          stdout=json.dumps({"status": "success", "accessKey": access_key, "secretKey": secret_key}))
+          stdout=json.dumps({"status": "success", "accessKey": access_key, "secretKey": secret_key},
+                            indent=indent))
 
     result = service_accounts.run([{"user": "app", "name": "Worker"}], console, context={})
 

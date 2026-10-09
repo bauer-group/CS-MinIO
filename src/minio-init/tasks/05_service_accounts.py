@@ -183,17 +183,14 @@ def run(items: list, console, **kwargs) -> dict:
 
         created += 1
 
-        # Parse the generated credentials from mc output
+        # Parse the generated credentials from mc output (compact or indented JSON)
         credentials = {"user": parent_user, "name": sa_name}
-        for line in result.stdout.strip().splitlines():
-            try:
-                data = json.loads(line)
-                if "accessKey" in data:
-                    credentials["accessKey"] = data["accessKey"]
-                    credentials["secretKey"] = data.get("secretKey", "")
-                    break
-            except json.JSONDecodeError:
-                continue
+        data = next(
+            (d for d in iter_json(result.stdout) if isinstance(d, dict) and d.get("accessKey")), None
+        )
+        if data:
+            credentials["accessKey"] = data["accessKey"]
+            credentials["secretKey"] = data.get("secretKey", "")
 
         console.print(
             f"    [green]Created service account: {sa_name} "
