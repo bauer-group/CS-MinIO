@@ -1,0 +1,6 @@
+{
+  "_description": "Failure: retention on a bucket that was created without object lock.",
+  "buckets": [
+    { "name": "it-docs", "region": "eu-central-1", "retention": { "mode": "governance", "days": 1 } }
+  ]
+}

@@ -306,7 +306,8 @@ Virtual-host-style bucket access (e.g., `bucket.s3.example.com`) is prepared but
 ├── docs/
 │   └── aistor-migration.md            # MinIO AIStor (licensed successor) info
 ├── tests/
-│   └── minio-init/                    # Init container unit tests (pytest, mc faked)
+│   └── minio-init/                    # Init container tests: unit (pytest, mc faked)
+│       └── integration/               # Real MinIO + init image round trip (run.sh)
 ├── docker-compose-single.yml          # Single server, direct port access
 ├── docker-compose-single-traefik.yml  # Single server, Traefik HTTPS
 ├── docker-compose-development.yml     # Development mode, local source builds

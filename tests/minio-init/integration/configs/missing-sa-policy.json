@@ -1,0 +1,6 @@
+{
+  "_description": "Failure: a service account is restricted to a policy that does not exist.",
+  "service_accounts": [
+    { "user": "it-app", "name": "it-unscoped", "policy": "pItMissing" }
+  ]
+}

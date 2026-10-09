@@ -1,0 +1,107 @@
+{
+  "$schema": "https://raw.githubusercontent.com/bauer-group/CS-MinIO/main/init.schema.json",
+  "_description": "Every resource type, plus four optional items that must be skipped: it-backup (empty secret), its group gItBackup, its service account it-backup-agent, and the itworker notification whose receiver does not run.",
+  "buckets": [
+    {
+      "name": "it-docs",
+      "region": "eu-central-1",
+      "versioning": true,
+      "quota": { "type": "hard", "size": "1GB" },
+      "lifecycle_rules": [
+        { "prefix": "daily/", "expire_days": 15 },
+        { "prefix": "weekly/", "expire_days": 36 }
+      ],
+      "policy": "private"
+    },
+    {
+      "name": "it-locked",
+      "region": "eu-central-1",
+      "object_lock": true,
+      "retention": { "mode": "governance", "days": 1 },
+      "policy": "private"
+    },
+    {
+      "name": "it-public",
+      "region": "eu-central-1",
+      "policy": "public"
+    }
+  ],
+  "policies": [
+    {
+      "name": "pItDocs",
+      "statements": [
+        {
+          "Effect": "Allow",
+          "Action": ["s3:GetObject", "s3:PutObject", "s3:DeleteObject", "s3:ListBucket"],
+          "Resource": ["arn:aws:s3:::it-docs", "arn:aws:s3:::it-docs/*"]
+        }
+      ]
+    },
+    {
+      "name": "pItDocsRead",
+      "statements": [
+        {
+          "Effect": "Allow",
+          "Action": ["s3:GetObject"],
+          "Resource": ["arn:aws:s3:::it-docs/*"]
+        }
+      ]
+    },
+    {
+      "name": "pItBackup",
+      "statements": [
+        {
+          "Effect": "Allow",
+          "Action": ["s3:PutObject"],
+          "Resource": ["arn:aws:s3:::it-locked/*"]
+        }
+      ]
+    }
+  ],
+  "users": [
+    {
+      "access_key": "it-app",
+      "secret_key": "${IT_APP_PASSWORD}",
+      "groups": ["gItApps"],
+      "policies": ["pItDocsRead"]
+    },
+    {
+      "access_key": "it-backup",
+      "secret_key": "${IT_BACKUP_PASSWORD}",
+      "groups": ["gItBackup"]
+    }
+  ],
+  "groups": [
+    { "name": "gItApps", "policies": ["pItDocs"] },
+    { "name": "gItBackup", "policies": ["pItBackup"] }
+  ],
+  "service_accounts": [
+    {
+      "user": "it-app",
+      "name": "it-worker",
+      "description": "Scoped to pItDocsRead",
+      "policy": "pItDocsRead"
+    },
+    {
+      "user": "it-backup",
+      "name": "it-backup-agent"
+    }
+  ],
+  "notifications": [
+    {
+      "id": "ithook",
+      "type": "webhook",
+      "endpoint": "http://hook:8080/",
+      "auth_token": "${WEBHOOK_AUTH_TOKEN}",
+      "queue_dir": "/data/.minio-events",
+      "buckets": ["it-public"],
+      "events": ["put", "delete"]
+    },
+    {
+      "id": "itworker",
+      "type": "webhook",
+      "endpoint": "http://minio-worker:8080/webhook",
+      "buckets": ["it-public"]
+    }
+  ]
+}
