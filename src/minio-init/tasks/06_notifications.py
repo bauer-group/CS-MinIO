@@ -255,6 +255,19 @@ def _endpoint_unreachable(endpoint: str, attempts: int = 3, delay: float = 2.0) 
     return True
 
 
+def _host_port(endpoint: str) -> str:
+    """host:port of an endpoint URL for log lines.
+
+    Never the whole URL: a webhook URL may carry credentials (user:password@ or a
+    token in its query), and init logs end up in CI runs and support tickets.
+    """
+    try:
+        url = urlparse(endpoint)
+        return f"{url.hostname}:{url.port or (443 if url.scheme == 'https' else 80)}"
+    except ValueError:
+        return "(invalid URL)"
+
+
 def _wait_healthy(timeout: int) -> bool:
     endpoint = os.environ.get("MINIO_ENDPOINT", "http://minio-server:9000")
     time.sleep(2)  # let the restart begin before polling
@@ -326,7 +339,7 @@ def run(items: list, console, **kwargs) -> dict:
         elif unreachable:
             skip(
                 console,
-                f"notification '{target_id}': endpoint {entry['endpoint']} is not reachable "
+                f"notification '{target_id}': endpoint {_host_port(entry['endpoint'])} is not reachable "
                 f"(receiver not running?) - target and its bindings not configured",
             )
             skipped += 1

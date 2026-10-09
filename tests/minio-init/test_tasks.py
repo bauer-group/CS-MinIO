@@ -488,6 +488,21 @@ def test_unreachable_endpoint_skips_target_and_bindings(mc, console, notify):
     assert "is not reachable" in output(console)
 
 
+def test_unreachable_endpoint_is_logged_without_its_credentials(mc, console, notify):
+    # A webhook URL may carry userinfo or a token in its query; only host:port is logged.
+    user, token = random_secret(), random_secret()
+    endpoint = "https://" + user + ":" + token + "@hooks.example.com/notify?token=" + token
+    notify.setattr(notifications, "_endpoint_unreachable", lambda endpoint: True)
+    _admin_info(mc, [])
+    mc.fail("admin", "config", "set")
+
+    notifications.run([{**ENTRY, "endpoint": endpoint}], console)
+
+    log = output(console)
+    assert "endpoint hooks.example.com:443 is not reachable" in log
+    assert user not in log and token not in log
+
+
 def test_target_rejected_although_reachable_is_fatal(mc, console, notify):
     _admin_info(mc, [])
     mc.fail("admin", "config", "set", message="Unable to set server config", cause="invalid queue_dir")
