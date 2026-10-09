@@ -39,18 +39,20 @@ class FakeMC:
 
     def __init__(self):
         self.calls: list[list[str]] = []
-        self._rules: list[tuple[tuple, int, str, object]] = []
+        self._rules: list[dict] = []
 
-    def on(self, *prefix: str, rc: int = 0, stdout: str = "", effect=None) -> "FakeMC":
+    def on(self, *prefix: str, rc: int = 0, stdout: str = "", effect=None, times: int | None = None) -> "FakeMC":
         """Answer calls whose arguments start with `prefix` (later rules win).
 
         `effect(args)` runs on a match, e.g. to write the file mc would write.
+        `times` limits how often the rule answers before it is dropped.
         """
-        self._rules.insert(0, (prefix, rc, stdout, effect))
+        self._rules.insert(0, {"prefix": prefix, "rc": rc, "stdout": stdout, "effect": effect, "times": times})
         return self
 
-    def fail(self, *prefix: str, message: str = "Unable to complete the request", cause: str = "") -> "FakeMC":
-        return self.on(*prefix, rc=1, stdout=mc_error(message, cause))
+    def fail(self, *prefix: str, message: str = "Unable to complete the request", cause: str = "",
+             times: int | None = None) -> "FakeMC":
+        return self.on(*prefix, rc=1, stdout=mc_error(message, cause), times=times)
 
     def called(self, *prefix: str) -> list[list[str]]:
         return [c for c in self.calls if tuple(c[: len(prefix)]) == prefix]
@@ -59,12 +61,17 @@ class FakeMC:
         assert cmd[0] == "mc", f"unexpected command {cmd}"
         mc_args = [a for a in cmd[1:] if a != "--json"]
         self.calls.append(mc_args)
-        for prefix, rc, stdout, effect in self._rules:
-            if tuple(mc_args[: len(prefix)]) == prefix:
-                if effect:
-                    effect(mc_args)
+        for rule in self._rules:
+            if tuple(mc_args[: len(rule["prefix"])]) == rule["prefix"]:
+                if rule["times"] is not None:
+                    rule["times"] -= 1
+                    if rule["times"] == 0:
+                        self._rules.remove(rule)
+                if rule["effect"]:
+                    rule["effect"](mc_args)
                 # mc prints the error document on stdout and only a newline on stderr
-                return subprocess.CompletedProcess(cmd, rc, stdout=stdout, stderr="\n" if rc else "")
+                rc = rule["rc"]
+                return subprocess.CompletedProcess(cmd, rc, stdout=rule["stdout"], stderr="\n" if rc else "")
         return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
 
 

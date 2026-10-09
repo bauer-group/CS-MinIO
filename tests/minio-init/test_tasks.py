@@ -452,7 +452,20 @@ def test_target_rejected_although_reachable_is_fatal(mc, console, notify):
     result = notifications.run([ENTRY], console)
 
     assert result["failed"] == 1
+    assert len(mc.called("admin", "config", "set")) == 2  # retried once, as it is reachable
     assert not mc.called("event")
+
+
+def test_receiver_that_came_up_while_minio_tested_it_is_retried(mc, console, notify):
+    _admin_info(mc, [ARN])
+    mc.fail("admin", "config", "set", message="Unable to set server config",
+            cause="error (cdnpurge:webhook): connection refused", times=1)
+
+    result = notifications.run([ENTRY], console)
+
+    assert result["failed"] == 0 and result["items_skipped"] == 0
+    assert len(mc.called("admin", "config", "set")) == 2
+    assert mc.called("event", "add")
 
 
 def test_unhealthy_server_after_restart_is_fatal(mc, console, notify):

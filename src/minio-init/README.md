@@ -274,7 +274,9 @@ and given CDN credentials to receive and act on these webhooks. See
 [src/minio-worker/README.md](../minio-worker/README.md). While the endpoint is not
 reachable (worker disabled or not started yet), MinIO refuses to register the target: the
 entry and its bindings are reported as skipped (exit 0) and registered on the next start.
-A target MinIO rejects although its endpoint is reachable is a failure (exit 1).
+If the endpoint is reachable by the time the init container checks it (a receiver that was
+still starting), the target is set once more; a target MinIO still rejects is a failure
+(exit 1).
 
 ## Task Reference
 
