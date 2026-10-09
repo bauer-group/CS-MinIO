@@ -101,7 +101,7 @@ check "group of the skipped user is skipped" logged run1.log "Skipped: group 'gI
 check "service account of the skipped user is skipped" \
   logged run1.log "Skipped: service account 'it-backup-agent': parent user 'it-backup' was not created"
 check "unreachable notification receiver is skipped" \
-  logged run1.log "Skipped: notification 'itworker': endpoint http://minio-worker:8080/webhook is not reachable"
+  logged run1.log "Skipped: notification 'itworker': endpoint minio-worker:8080 is not reachable"
 check "summary counts the four optional items" logged run1.log "4 optional item(s) skipped"
 check "nothing failed" not logged run1.log "Failed"
 check "gItApps holds it-app and pItDocs" group_holds_app
