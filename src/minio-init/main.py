@@ -13,6 +13,13 @@ Configuration loading order:
      b) /app/config/init.json (fallback, if mounted)
 
 JSON values may contain ${ENV_VAR} placeholders for secret injection.
+
+Exit status: 0 when every configured item was applied, already in place, or
+intentionally skipped (an optional item such as a user whose secret is empty);
+1 as soon as any item failed. All items are still attempted, so one run reports
+every problem. Compose services that wait with
+`condition: service_completed_successfully` therefore never start on top of a
+half-applied configuration.
 """
 
 import json
@@ -25,6 +32,7 @@ from importlib import import_module
 from pathlib import Path
 
 from rich.console import Console
+from rich.markup import escape
 from rich.panel import Panel
 
 console = Console()
@@ -154,9 +162,15 @@ def discover_configs() -> list[tuple[str, dict]]:
 
 
 def discover_tasks() -> list:
-    """Discover available initialization tasks from the tasks/ directory."""
+    """Discover available initialization tasks from the tasks/ directory.
+
+    Raises:
+        RuntimeError: a task module could not be imported. Running without it
+        would silently ignore its part of the configuration.
+    """
     tasks_dir = Path(__file__).parent / "tasks"
     tasks = []
+    errors = []
 
     for task_file in sorted(tasks_dir.glob("*.py")):
         if task_file.name.startswith("_"):
@@ -173,20 +187,35 @@ def discover_tasks() -> list:
                     "module": module,
                 })
         except Exception as e:
-            console.print(f"[yellow]Warning: Failed to load task {task_file.name}: {e}[/]")
+            errors.append(f"{task_file.name}: {e}")
+
+    if errors:
+        raise RuntimeError("failed to load task(s): " + "; ".join(errors))
 
     return tasks
 
 
-def process_config(label: str, config: dict, tasks: list) -> tuple[int, int, int]:
+def process_config(
+    label: str, config: dict, tasks: list, context: dict | None = None
+) -> tuple[int, int, int, int]:
     """Process a single config through all tasks.
 
+    A task reports item-level failures in its result's "failed" count and
+    intentionally skipped optional items in "items_skipped"; an exception
+    counts as one failure. `context` is shared by all tasks and configs of one
+    run (e.g. the users task records skipped users for the service-accounts
+    task).
+
     Returns:
-        Tuple of (applied, skipped, failed) counts.
+        Tuple of (applied, skipped, failed, items_skipped): applied and skipped
+        count tasks, failed and items_skipped count items.
     """
+    if context is None:
+        context = {}
     applied = 0
     skipped = 0
     failed = 0
+    items_skipped = 0
 
     for task in tasks:
         task_name = task["name"]
@@ -203,25 +232,31 @@ def process_config(label: str, config: dict, tasks: list) -> tuple[int, int, int
 
         try:
             items = config.get(config_key, []) if config_key else []
-            result = task["module"].run(items, console, config=config)
+            result = task["module"].run(items, console, config=config, context=context)
+            message = escape(str(result.get("message", "")))
+            items_skipped += int(result.get("items_skipped", 0) or 0)
+            task_failed = int(result.get("failed", 0) or 0)
 
-            if result.get("skipped"):
-                console.print(f"  [dim]Skipped: {result.get('message', 'Not applicable')}[/]")
+            if task_failed:
+                console.print(f"  [red]x {message}[/]")
+                failed += task_failed
+            elif result.get("skipped"):
+                console.print(f"  [dim]Skipped: {message or 'Not applicable'}[/]")
                 skipped += 1
             elif result.get("changed"):
-                console.print(f"  [green]+ {result.get('message', 'Done')}[/]")
+                console.print(f"  [green]+ {message or 'Done'}[/]")
                 applied += 1
             else:
-                console.print(f"  [blue]= {result.get('message', 'Already configured')}[/]")
+                console.print(f"  [blue]= {message or 'Already configured'}[/]")
                 applied += 1
 
         except Exception as e:
-            console.print(f"  [red]x Failed: {e}[/]")
+            console.print(f"  [red]x Failed: {escape(str(e))}[/]")
             failed += 1
 
         console.print()
 
-    return applied, skipped, failed
+    return applied, skipped, failed, items_skipped
 
 
 def main() -> int:
@@ -258,7 +293,11 @@ def main() -> int:
     console.print()
 
     # Discover tasks
-    tasks = discover_tasks()
+    try:
+        tasks = discover_tasks()
+    except RuntimeError as e:
+        console.print(f"[red]Error: {escape(str(e))}[/]")
+        return 1
     if not tasks:
         console.print("[yellow]No initialization tasks found[/]")
         return 0
@@ -267,7 +306,7 @@ def main() -> int:
     try:
         configs = discover_configs()
     except (ValueError, json.JSONDecodeError) as e:
-        console.print(f"[red]Error loading config: {e}[/]")
+        console.print(f"[red]Error loading config: {escape(str(e))}[/]")
         return 1
 
     if not configs:
@@ -278,29 +317,34 @@ def main() -> int:
     total_applied = 0
     total_skipped = 0
     total_failed = 0
+    total_items_skipped = 0
+    context: dict = {}
 
     for label, config in configs:
         console.print(f"[bold cyan]── Processing {label} configuration ──[/]")
         console.print()
 
-        applied, skipped, failed = process_config(label, config, tasks)
+        applied, skipped, failed, items_skipped = process_config(label, config, tasks, context)
         total_applied += applied
         total_skipped += skipped
         total_failed += failed
+        total_items_skipped += items_skipped
 
     # Summary
     console.print("─" * 50)
+    optional = f", {total_items_skipped} optional item(s) skipped" if total_items_skipped else ""
 
     if total_failed == 0:
         console.print(
             f"[green]Initialization complete "
-            f"({total_applied} applied, {total_skipped} skipped)[/]"
+            f"({total_applied} applied, {total_skipped} skipped{optional})[/]"
         )
         return 0
     else:
         console.print(
             f"[red]Initialization had errors "
-            f"({total_failed} failed, {total_applied} applied, {total_skipped} skipped)[/]"
+            f"({total_failed} failed, {total_applied} applied, {total_skipped} skipped{optional}) "
+            f"- see the 'Failed:' lines above; exiting with status 1[/]"
         )
         return 1
 

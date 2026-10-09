@@ -18,38 +18,25 @@ JSON config example:
     }
   ]
 }
+
+MinIO only knows a group once it has a member. A group whose users were all
+skipped (optional users with an empty secret) or that has no users at all
+therefore does not exist yet: it is reported as skipped, not failed - there is
+nobody the policies could apply to. Any other attach error (e.g. a policy that
+does not exist) is a failure and the init container exits 1.
 """
 
-import json
-import subprocess
+from ._mc import MC_ALIAS, fail, skip
+from ._mc import mc as _mc
 
 TASK_NAME = "Groups"
 TASK_DESCRIPTION = "Attach policies to groups"
 CONFIG_KEY = "groups"
 
-MC_ALIAS = "minio"
 
-
-def _mc(args: list) -> subprocess.CompletedProcess:
-    result = subprocess.run(
-        ["mc", "--json"] + args,
-        capture_output=True,
-        text=True,
-    )
-    # mc --json outputs errors to stdout as JSON, not stderr
-    if result.returncode != 0 and not result.stderr.strip():
-        for line in (result.stdout or "").splitlines():
-            try:
-                err = json.loads(line).get("error", {})
-                if isinstance(err, dict) and err.get("message"):
-                    result.stderr = err["message"]
-                    break
-                elif isinstance(err, str) and err:
-                    result.stderr = err
-                    break
-            except (json.JSONDecodeError, AttributeError):
-                continue
-    return result
+def _is_missing_group(error: str) -> bool:
+    """mc's message for a group MinIO does not know (XMinioAdminNoSuchGroup)."""
+    return "specified group does not exist" in error.lower()
 
 
 def run(items: list, console, **kwargs) -> dict:
@@ -58,29 +45,52 @@ def run(items: list, console, **kwargs) -> dict:
 
     created = 0
     configured = 0
+    skipped = 0
+    failed = 0
 
     for group in items:
         name = group["name"]
         policies = group.get("policies", [])
 
         if not policies:
-            console.print(f"    [yellow]Warning: Group '{name}' has no policies - skipped (at least one required)[/]")
+            skip(console, f"group '{name}' has no policies (at least one required)")
+            skipped += 1
             continue
 
-        # Attach policies (implicitly creates the group if it doesn't exist)
+        # Attach policies (mc reports an already attached policy as success)
+        status = "ok"
         for policy_name in policies:
             result = _mc(["admin", "policy", "attach", MC_ALIAS, policy_name, "--group", name])
             if result.returncode == 0:
                 console.print(f"    [dim]  Attached policy: {policy_name} → {name}[/]")
                 configured += 1
+            elif _is_missing_group(result.stderr):
+                skip(
+                    console,
+                    f"group '{name}' has no members (its users were skipped or none are "
+                    f"configured) - policies not attached",
+                )
+                skipped += 1
+                status = "skipped"
+                break
             else:
-                console.print(f"    [yellow]  Policy attach {policy_name} → {name}: {result.stderr.strip()}[/]")
+                fail(console, f"attach policy {policy_name} to group {name}: {result.stderr}")
+                failed += 1
+                status = "failed"
 
-        created += 1
-        console.print(f"    [green]Created/updated group: {name}[/]")
+        if status == "ok":
+            created += 1
+            console.print(f"    [green]Created/updated group: {name}[/]")
 
     total = len(items)
+    msg = f"{total} group(s) processed ({created} created/updated, {configured} policies attached"
+    if skipped:
+        msg += f", {skipped} skipped"
+    if failed:
+        msg += f", {failed} failed"
     return {
         "changed": created > 0,
-        "message": f"{total} group(s) processed ({created} created/updated, {configured} policies attached)",
+        "message": msg + ")",
+        "failed": failed,
+        "items_skipped": skipped,
     }

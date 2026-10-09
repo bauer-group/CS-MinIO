@@ -20,11 +20,48 @@ Both configs are processed independently through all tasks. Idempotency ensures 
 - **Buckets**: Create with versioning, object-lock/WORM, quotas, retention, lifecycle rules, anonymous access
 - **IAM Policies**: Create or update custom S3 policy documents
 - **Users**: Create users with group membership and direct policies
-- **Groups**: Attach policies to groups (groups are created implicitly when policies are attached)
+- **Groups**: Attach policies to groups (a group exists once its first user was added to it)
 - **Service Accounts**: Dynamic server-generated credentials, output as JSON files
 - **Notifications**: Webhook notification targets and bucket/event bindings (e.g. for CDN cache purge)
 - **Environment Variable Resolution**: `${VAR_NAME}` syntax in JSON values
+- **Truthful Exit Status**: Exits 1 if any configured item fails; optional items are skipped (see [Exit Status](#exit-status))
 - **Task Discovery**: Pluggable task system via numbered Python files
+
+## Exit Status
+
+The init container exits **0** only when every configured item was applied, was already in place, or is an optional item that was intentionally skipped. If any item cannot be applied it exits **1** - after it has still attempted all remaining items, so one run lists every problem. Services that wait for it with `depends_on: { minio-init: { condition: service_completed_successfully } }` therefore never start against a half-applied configuration.
+
+Every item outcome is one log line:
+
+| Log line     | Meaning                                    | Exit status |
+| ------------ | ------------------------------------------ | ----------- |
+| `Failed: …`  | The item could not be applied              | 1           |
+| `Skipped: …` | An optional item was intentionally left out | 0           |
+| `Warning: …` | Worth reading, but nothing failed          | 0           |
+
+The summary line ends either in `Initialization complete (…)` or in `Initialization had errors (N failed, …)`.
+
+**Failures (exit 1)**, for example:
+
+- a bucket that cannot be created, or versioning, quota, retention, a lifecycle rule or the anonymous policy that cannot be applied to it
+- a policy that cannot be created or updated
+- a user MinIO rejects (e.g. a secret shorter than 8 characters), a group membership or a policy attachment that fails (e.g. the policy does not exist)
+- a service account that cannot be created, whose scoped `policy` cannot be read, or whose generated credentials cannot be read back
+- an invalid notification `id`, a target MinIO rejects although its endpoint is reachable, MinIO not healthy again after the restart, a target still inactive after it, or an event binding that cannot be set
+- a `${VAR}` placeholder whose variable is not set at all, and a task module that cannot be loaded
+
+**Skipped (exit 0)** - optional items:
+
+| Item            | Skipped when                                                                                                                                                                                                                  |
+| --------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| User            | `access_key` or `secret_key` is an empty string, e.g. `"${BACKUP_PASSWORD}"` with `BACKUP_PASSWORD=` set but empty (Compose also passes an unset variable as empty). Also the root user (`MINIO_ROOT_USER`), which is not an IAM user |
+| Group           | It has no `policies`, or no members: MinIO only knows a group once a user was added to it, so a group whose users were all skipped is skipped too                                                                            |
+| Service account | Its parent `user` was skipped or is an empty string                                                                                                                                                                           |
+| Notification    | It has no `endpoint`, or MinIO refuses the target because the endpoint is not reachable (the receiver, e.g. the opt-in `minio-worker`, is not running). Its bindings are skipped with it; the next start registers it          |
+
+**Warnings (exit 0):** `object_lock` requested for a bucket that already exists, invalid `cors` rules, and an unknown bucket `policy` value (the bucket's anonymous access is then left unchanged).
+
+**Upgrading from a version that always exited 0:** earlier versions logged most of these failures but still exited 0, so a misconfiguration could go unnoticed while dependent services started anyway. If `minio-init` now exits 1, `docker compose logs minio-init` names every failed item. Fix the configuration (for example a secret shorter than 8 characters or a misspelled policy name) and run `docker compose up -d` again.
 
 ## JSON Configuration Schema
 
@@ -102,7 +139,7 @@ Both configs are processed independently through all tasks. Idempotency ensures 
 | `quota`       | object  | -            | `{"type": "hard", "size": "10GB"}`                     |
 | `retention`       | object  | -            | `{"mode": "compliance", "days": 365}` (requires lock)  |
 | `lifecycle_rules` | array   | `[]`         | Prefix-based expiration rules (see below)              |
-| `policy`          | string  | `"private"`  | `private`, `public` (download), `public-readwrite`     |
+| `policy`          | string  | `"private"`  | `private`, `public` (download), `public-readwrite`; any other value is a warning and leaves anonymous access unchanged |
 | `cors`            | array   | `[]`         | S3-compatible per-bucket CORS rules (see below)        |
 
 **Retention validity:** Specify either `days` or `years` in the retention object. The init container converts these to the `mc retention set` format (`365d` or `1y`).
@@ -222,7 +259,10 @@ ships a ready-to-use `cdnpurge` entry (scoped to the `public-assets` bucket).
 
 **Prerequisite:** the `minio-worker` container must be enabled (Compose profile `worker`)
 and given CDN credentials to receive and act on these webhooks. See
-[src/minio-worker/README.md](../minio-worker/README.md).
+[src/minio-worker/README.md](../minio-worker/README.md). While the endpoint is not
+reachable (worker disabled or not started yet), MinIO refuses to register the target: the
+entry and its bindings are reported as skipped (exit 0) and registered on the next start.
+A target MinIO rejects although its endpoint is reachable is a failure (exit 1).
 
 ## Task Reference
 
@@ -235,7 +275,7 @@ and given CDN credentials to receive and act on these webhooks. See
 | 05    | Service Accounts | `service_accounts` | Create service accounts with dynamic credentials        |
 | 06    | Notifications    | `notifications`    | Configure webhook targets and bucket/event bindings     |
 
-> **Note:** Users (03) run before groups (04). Groups are implicitly created when users are added via `mc admin group add`. The groups task then attaches policies via `mc admin policy attach --group`. This ordering ensures policy attachments persist (group membership updates cannot overwrite them).
+> **Note:** Users (03) run before groups (04). Groups are implicitly created when users are added via `mc admin group add`. The groups task then attaches policies via `mc admin policy attach --group`. This ordering ensures policy attachments persist (group membership updates cannot overwrite them). A group nobody was added to does not exist in MinIO, so its policies cannot be attached: it is reported as skipped.
 
 > **Note:** The init container is additive only - it creates and updates resources but does not remove them. To delete buckets, policies, users, or groups, use the admin console or `mc` CLI directly.
 
@@ -261,8 +301,12 @@ required.
    - `TASK_NAME`: Display name
    - `TASK_DESCRIPTION`: Brief description
    - `CONFIG_KEY`: Key in the JSON config to read
-3. Implement `run(items: list, console, **kwargs) -> dict`
-4. Return `{"changed": bool, "skipped": bool, "message": str}`
+3. Implement `run(items: list, console, **kwargs) -> dict`. `kwargs["context"]` is a dict
+   shared by all tasks and configs of one run (e.g. `skipped_users`).
+4. Return `{"changed": bool, "skipped": bool, "message": str, "failed": int, "items_skipped": int}`.
+   `failed` > 0 makes the run exit 1 (see [Exit Status](#exit-status)). Run mc through
+   `mc()` and report items with `fail()`, `skip()` and `warn()` from `tasks/_mc.py`, which
+   is not a task itself (a leading underscore excludes a module from discovery).
 
 ## License
 

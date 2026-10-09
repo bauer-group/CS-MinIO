@@ -46,21 +46,35 @@ Idempotency (critical):
     "Unable to enable notification on the specified bucket" once MINIO_SITE_REGION is set,
     even though the target is registered. We resolve the real ARN from `info.sqsARN`.
   - Additive only: bindings not present in the config are left untouched (like lifecycle).
+
+Failures vs. skips:
+  - An entry without an endpoint is skipped. So is a target MinIO refuses to register
+    while its endpoint is unreachable from here (MinIO tests the connection when the
+    target is set): the receiver - e.g. the opt-in minio-worker - is not running. Its
+    bindings are skipped with it; the next start registers it once the endpoint is up.
+  - Everything else is a failure and the init container exits 1: an invalid id, a target
+    MinIO rejects although its endpoint is reachable, MinIO not healthy again after the
+    restart, a target that is still not active after it, or a binding that cannot be set.
 """
 
 import hashlib
 import json
 import os
 import re
+import socket
 import subprocess
 import time
 from pathlib import Path
+from urllib.parse import urlparse
+
+from ._mc import MC_ALIAS, fail, skip, warn
+from ._mc import iter_json as _iter_json
+from ._mc import mc as _mc
 
 TASK_NAME = "Notifications"
 TASK_DESCRIPTION = "Configure bucket notification targets and event bindings"
 CONFIG_KEY = "notifications"
 
-MC_ALIAS = "minio"
 MARKER_DIR = os.environ.get("NOTIFY_MARKER_DIR", "/data/credentials/.notifications")
 
 # mc event add takes short names; mc event ls reports the full S3 event names.
@@ -72,47 +86,6 @@ _EVENT_FULL = {
     "ilm": "s3:ObjectRestore:*",
     "scanner": "s3:Scanner:*",
 }
-
-
-def _mc(args: list, use_json: bool = True) -> subprocess.CompletedProcess:
-    cmd = ["mc"] + (["--json"] if use_json else []) + args
-    result = subprocess.run(cmd, capture_output=True, text=True)
-    # mc --json outputs errors to stdout as JSON, not stderr
-    if result.returncode != 0 and not result.stderr.strip():
-        for line in (result.stdout or "").splitlines():
-            try:
-                err = json.loads(line).get("error", {})
-                if isinstance(err, dict) and err.get("message"):
-                    result.stderr = err["message"]
-                    break
-                elif isinstance(err, str) and err:
-                    result.stderr = err
-                    break
-            except (json.JSONDecodeError, AttributeError):
-                continue
-    return result
-
-
-def _iter_json(text: str):
-    """Yield successive JSON values from mc output.
-
-    mc is inconsistent under ``--json``: most subcommands emit compact JSONL (one
-    object per line), but ``event ls`` pretty-prints *indented, multi-line* objects
-    concatenated together. Parsing line-by-line silently drops every indented record,
-    which breaks binding idempotency. ``raw_decode`` walks the stream either way.
-    """
-    decoder = json.JSONDecoder()
-    idx, n = 0, len(text)
-    while idx < n:
-        while idx < n and text[idx].isspace():
-            idx += 1
-        if idx >= n:
-            break
-        try:
-            obj, idx = decoder.raw_decode(text, idx)
-        except json.JSONDecodeError:
-            break
-        yield obj
 
 
 def _desired_kv(entry: dict) -> dict:
@@ -146,7 +119,7 @@ def _write_marker(target_id: str, digest: str, console) -> None:
         Path(MARKER_DIR).mkdir(parents=True, exist_ok=True)
         _marker_path(target_id).write_text(digest)
     except OSError as e:
-        console.print(f"    [yellow]Warning: could not persist marker for {target_id}: {e}[/]")
+        warn(console, f"could not persist marker for {target_id}: {e}")
 
 
 def _target_exists(target_id: str) -> bool:
@@ -219,11 +192,12 @@ def _to_full(events: list) -> set:
     return {_EVENT_FULL.get(e, e) for e in events}
 
 
-def _list_buckets() -> list:
+def _list_buckets() -> list | None:
+    """All bucket names, or None when they cannot be listed."""
     result = _mc(["ls", MC_ALIAS])
     buckets = []
     if result.returncode != 0:
-        return buckets
+        return None
     for data in _iter_json(result.stdout):
         if not isinstance(data, dict):
             continue
@@ -254,6 +228,31 @@ def _existing_bindings(bucket: str) -> list:
     return bindings
 
 
+def _endpoint_unreachable(endpoint: str, attempts: int = 3, delay: float = 2.0) -> bool:
+    """True when the endpoint is a well-formed URL but no TCP connection to it succeeds.
+
+    Used only after MinIO refused a target, to tell "the receiver is not running" (skip)
+    from a real misconfiguration (fail). A few attempts cover a receiver that is still
+    starting next to us. A malformed endpoint is not "unreachable" - it is a config error.
+    """
+    try:
+        url = urlparse(endpoint)
+        host = url.hostname
+        port = url.port or (443 if url.scheme == "https" else 80)
+    except ValueError:
+        return False
+    if not host or url.scheme not in ("http", "https"):
+        return False
+    for attempt in range(attempts):
+        try:
+            with socket.create_connection((host, port), timeout=3):
+                return False
+        except OSError:
+            if attempt < attempts - 1:
+                time.sleep(delay)
+    return True
+
+
 def _wait_healthy(timeout: int) -> bool:
     endpoint = os.environ.get("MINIO_ENDPOINT", "http://minio-server:9000")
     time.sleep(2)  # let the restart begin before polling
@@ -280,27 +279,29 @@ def run(items: list, console, **kwargs) -> dict:
     targets_set = 0
     bindings_added = 0
     skipped = 0
+    failed = 0
     valid = []
+    applied = []  # target ids configured in this run (must be active after the restart)
 
     # --- Phase 1: Targets (may require a single restart) ---
     active = _active_arns()  # runtime ARN list; source of truth for "already active"
     for entry in items:
         target_id = entry.get("id", "")
         if not re.fullmatch(r"[A-Za-z0-9_-]+", target_id or ""):
-            console.print(f"    [yellow]Warning: invalid notification id '{target_id}', skipping[/]")
-            skipped += 1
+            fail(console, f"invalid notification id '{target_id}' (allowed: A-Z, a-z, 0-9, _ and -)")
+            failed += 1
             continue
         if not entry.get("endpoint"):
-            console.print(f"    [yellow]Warning: notification '{target_id}' has no endpoint, skipping[/]")
+            skip(console, f"notification '{target_id}' has no endpoint")
             skipped += 1
             continue
 
-        valid.append(entry)
         kv = _desired_kv(entry)
         digest = _hash(target_id, kv)
 
         if _read_marker(target_id) == digest and _target_active(target_id, active):
             console.print(f"    [dim]Target unchanged: {target_id}[/]")
+            valid.append(entry)
             continue
 
         cmd = ["admin", "config", "set", MC_ALIAS, f"notify_webhook:{target_id}"]
@@ -311,25 +312,43 @@ def run(items: list, console, **kwargs) -> dict:
             restart_required = True
             _write_marker(target_id, digest, console)
             console.print(f"    [green]Target configured: {target_id}[/]")
+            valid.append(entry)
+            applied.append(target_id)
+        elif _endpoint_unreachable(entry["endpoint"]):
+            skip(
+                console,
+                f"notification '{target_id}': endpoint {entry['endpoint']} is not reachable "
+                f"(receiver not running?) - target and its bindings not configured",
+            )
+            skipped += 1
         else:
-            console.print(f"    [red]Failed to set target {target_id}: {res.stderr.strip()}[/]")
+            fail(console, f"set notification target {target_id}: {res.stderr}")
+            failed += 1
 
     # --- Restart once if any target changed ---
     if restart_required:
         console.print("    [dim]Restarting MinIO to apply notification target(s)...[/]")
         rr = _mc(["admin", "service", "restart", MC_ALIAS])
         if rr.returncode != 0:
-            console.print(f"    [yellow]Warning: service restart returned: {rr.stderr.strip()}[/]")
+            warn(console, f"service restart returned: {rr.stderr}")
         timeout = int(os.environ.get("MINIO_WAIT_TIMEOUT", "60"))
         if _wait_healthy(timeout):
             console.print("    [green]MinIO healthy after restart[/]")
         else:
-            console.print("    [red]MinIO did not become healthy after restart[/]")
+            fail(console, f"MinIO did not become healthy within {timeout}s after the restart")
             return {
                 "changed": True,
                 "message": f"{targets_set} target(s) set, restart health-check timed out",
+                "failed": failed + 1,
+                "items_skipped": skipped,
             }
         active = _active_arns()  # refresh: newly-applied targets now carry their ARN
+        if active is not None:
+            for target_id in applied:
+                if _find_arn(target_id, active) is None:
+                    fail(console, f"notification target {target_id} is not active after the restart")
+                    failed += 1
+                    valid = [e for e in valid if e["id"] != target_id]
 
     # --- Phase 2: Event bindings (no restart, idempotent, additive) ---
     for entry in valid:
@@ -345,6 +364,10 @@ def run(items: list, console, **kwargs) -> dict:
         buckets = entry.get("buckets", ["*"])
         if buckets == ["*"]:
             buckets = _list_buckets()
+            if buckets is None:
+                fail(console, f"list buckets for notification '{target_id}'")
+                failed += 1
+                continue
 
         for bucket in buckets:
             match = next((b for b in _existing_bindings(bucket) if b["arn"] == arn), None)
@@ -352,7 +375,11 @@ def run(items: list, console, **kwargs) -> dict:
                     and match["prefix"] == prefix and match["suffix"] == suffix:
                 continue
             if match:  # events/filter changed -> replace
-                _mc(["event", "remove", f"{MC_ALIAS}/{bucket}", arn])
+                rm = _mc(["event", "remove", f"{MC_ALIAS}/{bucket}", arn])
+                if rm.returncode != 0:
+                    fail(console, f"replace binding {target_id} -> {bucket}: {rm.stderr}")
+                    failed += 1
+                    continue
 
             cmd = ["event", "add", f"{MC_ALIAS}/{bucket}", arn, "--event", ",".join(events)]
             if prefix:
@@ -368,9 +395,8 @@ def run(items: list, console, **kwargs) -> dict:
             elif "already exists" in (res.stderr or "").lower():
                 console.print(f"    [dim]Binding exists: {target_id} -> {bucket}[/]")
             else:
-                console.print(
-                    f"    [yellow]Warning: bind {target_id} -> {bucket} failed: {res.stderr.strip()}[/]"
-                )
+                fail(console, f"bind {target_id} -> {bucket}: {res.stderr}")
+                failed += 1
 
     changed = targets_set > 0 or bindings_added > 0
     msg = (
@@ -379,4 +405,6 @@ def run(items: list, console, **kwargs) -> dict:
     )
     if skipped:
         msg += f", {skipped} skipped"
-    return {"changed": changed, "message": msg}
+    if failed:
+        msg += f", {failed} failed"
+    return {"changed": changed, "message": msg, "failed": failed, "items_skipped": skipped}

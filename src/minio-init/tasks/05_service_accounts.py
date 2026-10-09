@@ -32,6 +32,10 @@ Notes:
   - The output directory defaults to /data/credentials/ and can be
     overridden via the MINIO_CREDENTIALS_DIR environment variable.
   - Other containers can mount the same volume to read credentials.
+  - A service account whose parent user was skipped (optional user with an
+    empty secret) or resolves to an empty name is skipped as well. Any other
+    error (unknown parent user, unreadable policy, credentials that cannot be
+    parsed) is a failure and the init container exits 1.
 """
 
 import json
@@ -40,34 +44,14 @@ import subprocess
 import tempfile
 from pathlib import Path
 
+from ._mc import MC_ALIAS, fail, skip
+from ._mc import mc as _mc
+
 TASK_NAME = "Service Accounts"
 TASK_DESCRIPTION = "Create service accounts with dynamic credentials"
 CONFIG_KEY = "service_accounts"
 
-MC_ALIAS = "minio"
 CREDENTIALS_DIR = os.environ.get("MINIO_CREDENTIALS_DIR", "/data/credentials")
-
-
-def _mc(args: list) -> subprocess.CompletedProcess:
-    result = subprocess.run(
-        ["mc", "--json"] + args,
-        capture_output=True,
-        text=True,
-    )
-    # mc --json outputs errors to stdout as JSON, not stderr
-    if result.returncode != 0 and not result.stderr.strip():
-        for line in (result.stdout or "").splitlines():
-            try:
-                err = json.loads(line).get("error", {})
-                if isinstance(err, dict) and err.get("message"):
-                    result.stderr = err["message"]
-                    break
-                elif isinstance(err, str) and err:
-                    result.stderr = err
-                    break
-            except (json.JSONDecodeError, AttributeError):
-                continue
-    return result
 
 
 def _find_existing_sa(user: str, sa_name: str) -> str | None:
@@ -118,25 +102,28 @@ def _create_sa(cmd: list, sa_policy: str | None) -> subprocess.CompletedProcess:
         if sa_policy and isinstance(sa_policy, str):
             # Fetch the named policy document from MinIO
             policy_result = _mc(["admin", "policy", "info", MC_ALIAS, sa_policy])
-            if policy_result.returncode == 0:
-                # mc --json wraps output in metadata; extract the raw IAM policy
-                policy_doc = None
-                for line in policy_result.stdout.strip().splitlines():
-                    try:
-                        data = json.loads(line)
-                        if "policyJSON" in data:
-                            policy_doc = data["policyJSON"]
-                            break
-                    except json.JSONDecodeError:
-                        continue
+            if policy_result.returncode != 0:
+                policy_result.stderr = f"read policy {sa_policy}: {policy_result.stderr}"
+                return policy_result
 
-                if policy_doc:
-                    with tempfile.NamedTemporaryFile(
-                        mode="w", suffix=".json", delete=False, prefix="sa-policy-"
-                    ) as f:
-                        json.dump(policy_doc, f, indent=2)
-                        policy_path = f.name
-                    cmd.extend(["--policy", policy_path])
+            # mc --json wraps output in metadata; extract the raw IAM policy
+            policy_doc = None
+            for line in policy_result.stdout.strip().splitlines():
+                try:
+                    data = json.loads(line)
+                    if "policyJSON" in data:
+                        policy_doc = data["policyJSON"]
+                        break
+                except json.JSONDecodeError:
+                    continue
+
+            if policy_doc:
+                with tempfile.NamedTemporaryFile(
+                    mode="w", suffix=".json", delete=False, prefix="sa-policy-"
+                ) as f:
+                    json.dump(policy_doc, f, indent=2)
+                    policy_path = f.name
+                cmd.extend(["--policy", policy_path])
 
         return _mc(cmd)
     finally:
@@ -148,8 +135,12 @@ def run(items: list, console, **kwargs) -> dict:
     if not items:
         return {"skipped": True, "message": "No service accounts configured"}
 
+    skipped_users = kwargs.get("context", {}).get("skipped_users", set())
+
     created = 0
+    existing = 0
     skipped = 0
+    failed = 0
 
     for sa in items:
         parent_user = sa["user"]
@@ -157,11 +148,16 @@ def run(items: list, console, **kwargs) -> dict:
         sa_description = sa.get("description", "")
         sa_policy = sa.get("policy")
 
+        if not parent_user or parent_user in skipped_users:
+            skip(console, f"service account '{sa_name}': parent user '{parent_user}' was not created")
+            skipped += 1
+            continue
+
         # Check if service account already exists for this user
         existing_key = _find_existing_sa(parent_user, sa_name)
         if existing_key:
             console.print(f"    [dim]Service account exists: {sa_name} ({existing_key})[/]")
-            skipped += 1
+            existing += 1
             continue
 
         # Build command - let MinIO generate credentials
@@ -174,39 +170,46 @@ def run(items: list, console, **kwargs) -> dict:
         # Create the service account (with temp file cleanup for policy)
         result = _create_sa(cmd, sa_policy)
 
-        if result.returncode == 0:
-            created += 1
+        if result.returncode != 0:
+            fail(console, f"create service account {sa_name} (parent: {parent_user}): {result.stderr}")
+            failed += 1
+            continue
 
-            # Parse the generated credentials from mc output
-            credentials = {"user": parent_user, "name": sa_name}
-            for line in result.stdout.strip().splitlines():
-                try:
-                    data = json.loads(line)
-                    if "accessKey" in data:
-                        credentials["accessKey"] = data["accessKey"]
-                        credentials["secretKey"] = data.get("secretKey", "")
-                        break
-                except json.JSONDecodeError:
-                    continue
+        created += 1
 
-            if credentials.get("accessKey"):
-                creds_file = _write_credentials(sa_name, credentials)
-                console.print(
-                    f"    [green]Created service account: {sa_name} "
-                    f"(parent: {parent_user})[/]"
-                )
-                console.print(f"    [dim]  Credentials written to: {creds_file}[/]")
-            else:
-                console.print(
-                    f"    [green]Created service account: {sa_name} "
-                    f"(parent: {parent_user})[/]"
-                )
-                console.print(f"    [yellow]  Warning: Could not parse generated credentials[/]")
+        # Parse the generated credentials from mc output
+        credentials = {"user": parent_user, "name": sa_name}
+        for line in result.stdout.strip().splitlines():
+            try:
+                data = json.loads(line)
+                if "accessKey" in data:
+                    credentials["accessKey"] = data["accessKey"]
+                    credentials["secretKey"] = data.get("secretKey", "")
+                    break
+            except json.JSONDecodeError:
+                continue
+
+        console.print(
+            f"    [green]Created service account: {sa_name} "
+            f"(parent: {parent_user})[/]"
+        )
+        if credentials.get("accessKey"):
+            creds_file = _write_credentials(sa_name, credentials)
+            console.print(f"    [dim]  Credentials written to: {creds_file}[/]")
         else:
-            console.print(f"    [red]Failed to create SA {sa_name}: {result.stderr.strip()}[/]")
+            # The account exists now, but nobody can use it: its secret is lost.
+            fail(console, f"service account {sa_name}: could not parse the generated credentials")
+            failed += 1
 
     total = len(items)
+    msg = f"{total} service account(s) processed ({created} created, {existing} existing"
+    if skipped:
+        msg += f", {skipped} skipped"
+    if failed:
+        msg += f", {failed} failed"
     return {
         "changed": created > 0,
-        "message": f"{total} service account(s) processed ({created} created, {skipped} existing)",
+        "message": msg + ")",
+        "failed": failed,
+        "items_skipped": skipped,
     }

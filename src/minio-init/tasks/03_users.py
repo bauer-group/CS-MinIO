@@ -19,58 +19,51 @@ JSON config example:
     }
   ]
 }
+
+Optional users: a user whose access_key or secret_key resolves to an empty
+string (e.g. "${BACKUP_PASSWORD}" with the variable left empty) is skipped, not
+failed, and so are the service accounts that belong to it. Every other error
+(rejected secret, unknown group or policy) is a failure and the init container
+exits 1.
 """
 
-import json
 import os
-import subprocess
+
+from ._mc import MC_ALIAS, fail, skip
+from ._mc import mc as _mc
 
 TASK_NAME = "Users"
 TASK_DESCRIPTION = "Create users and assign group membership"
 CONFIG_KEY = "users"
-
-MC_ALIAS = "minio"
-
-
-def _mc(args: list) -> subprocess.CompletedProcess:
-    result = subprocess.run(
-        ["mc", "--json"] + args,
-        capture_output=True,
-        text=True,
-    )
-    # mc --json outputs errors to stdout as JSON, not stderr
-    if result.returncode != 0 and not result.stderr.strip():
-        for line in (result.stdout or "").splitlines():
-            try:
-                err = json.loads(line).get("error", {})
-                if isinstance(err, dict) and err.get("message"):
-                    result.stderr = err["message"]
-                    break
-                elif isinstance(err, str) and err:
-                    result.stderr = err
-                    break
-            except (json.JSONDecodeError, AttributeError):
-                continue
-    return result
 
 
 def run(items: list, console, **kwargs) -> dict:
     if not items:
         return {"skipped": True, "message": "No users configured"}
 
+    # Shared with the service-accounts task, which skips accounts of skipped users.
+    skipped_users = kwargs.get("context", {}).setdefault("skipped_users", set())
+
     created = 0
+    skipped = 0
+    failed = 0
     root_user = os.environ.get("MINIO_ROOT_USER", "minioadmin")
 
     for user in items:
         access_key = user["access_key"]
         secret_key = user["secret_key"]
 
+        if not access_key or not secret_key:
+            empty = "access_key" if not access_key else "secret_key"
+            skip(console, f"user '{access_key}': {empty} is empty - optional user not created")
+            skipped_users.add(access_key)
+            skipped += 1
+            continue
+
         # Skip root user - cannot be managed as IAM user
         if access_key == root_user:
-            console.print(
-                f"    [yellow]Skipped '{access_key}': this is the root user "
-                f"(MINIO_ROOT_USER), not an IAM user[/]"
-            )
+            skip(console, f"'{access_key}': this is the root user (MINIO_ROOT_USER), not an IAM user")
+            skipped += 1
             continue
 
         # Create user (idempotent: updates password if user exists)
@@ -80,7 +73,8 @@ def run(items: list, console, **kwargs) -> dict:
             created += 1
             console.print(f"    [green]Created/updated user: {access_key}[/]")
         else:
-            console.print(f"    [red]Failed to create user {access_key}: {result.stderr.strip()}[/]")
+            fail(console, f"create user {access_key}: {result.stderr}")
+            failed += 1
             continue
 
         # Add to groups (groups created implicitly, policies attached by 04_groups task)
@@ -89,18 +83,27 @@ def run(items: list, console, **kwargs) -> dict:
             if result.returncode == 0:
                 console.print(f"    [dim]  Added to group: {group_name}[/]")
             else:
-                console.print(f"    [yellow]  Group add {group_name}: {result.stderr.strip()}[/]")
+                fail(console, f"add user {access_key} to group {group_name}: {result.stderr}")
+                failed += 1
 
-        # Attach direct policies
+        # Attach direct policies (mc reports an already attached policy as success)
         for policy_name in user.get("policies", []):
             result = _mc(["admin", "policy", "attach", MC_ALIAS, policy_name, "--user", access_key])
             if result.returncode == 0:
                 console.print(f"    [dim]  Attached policy: {policy_name}[/]")
             else:
-                console.print(f"    [yellow]  Policy attach {policy_name}: {result.stderr.strip()}[/]")
+                fail(console, f"attach policy {policy_name} to user {access_key}: {result.stderr}")
+                failed += 1
 
     total = len(items)
+    msg = f"{total} user(s) processed ({created} created/updated"
+    if skipped:
+        msg += f", {skipped} skipped"
+    if failed:
+        msg += f", {failed} failed"
     return {
         "changed": created > 0,
-        "message": f"{total} user(s) processed ({created} created/updated)",
+        "message": msg + ")",
+        "failed": failed,
+        "items_skipped": skipped,
     }
