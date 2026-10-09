@@ -1,3 +1,4 @@
 # Test dependencies for the minio-init unit tests (pip install -r ...)
+jsonschema
 pytest
 rich
