@@ -45,7 +45,9 @@ Notes:
   - retention requires object_lock to be enabled on the bucket.
   - lifecycle_rules are matched by prefix for idempotency. Existing rules
     with the same prefix are updated if settings differ, or skipped if
-    already correct. Rules not in the config are not removed.
+    already correct; extra copies of a configured rule (earlier versions
+    added one on every run) are removed. Rules whose prefix is not in the
+    config are not touched.
   - cors is an S3-compatible per-bucket CORS ruleset. It is validated here but
     NOT applied to MinIO: open-source MinIO has no per-bucket CORS API and
     enforces CORS globally via the MINIO_API_CORS_ALLOW_ORIGIN server setting
@@ -61,9 +63,7 @@ Notes:
     warnings.
 """
 
-import json
-
-from ._mc import MC_ALIAS, fail, warn
+from ._mc import MC_ALIAS, fail, iter_json, warn
 from ._mc import mc as _mc
 
 TASK_NAME = "Buckets"
@@ -85,33 +85,45 @@ def _bucket_exists(name: str) -> bool:
 
 
 def _get_existing_lifecycle_rules(target: str) -> dict:
-    """Fetch existing ILM rules and return them keyed by prefix.
+    """Fetch existing ILM rules and group them by prefix.
+
+    `mc ilm rule ls --json` prints one document with minio-go's lifecycle JSON:
+    {"status": "success", "config": {"Rules": [{"ID": "...", "Filter": {"Prefix":
+    "daily/"}, "Expiration": {"Days": 15}, "NoncurrentVersionExpiration":
+    {"NoncurrentDays": 30}, ...}]}}. Empty values are omitted. A bucket without
+    rules makes the command fail ("lifecycle configuration not set"), which is
+    read as "no rules".
 
     Returns:
-        Dict mapping prefix -> {"id", "expire_days", "noncurrent_expire_days",
-        "expire_delete_marker"}.
+        Dict mapping prefix -> list of {"id", "expire_days",
+        "noncurrent_expire_days", "expire_delete_marker"}.
     """
     result = _mc(["ilm", "rule", "ls", target])
     rules = {}
     if result.returncode != 0:
         return rules
 
-    for line in result.stdout.strip().splitlines():
-        try:
-            data = json.loads(line)
-        except json.JSONDecodeError:
+    for doc in iter_json(result.stdout):
+        if not isinstance(doc, dict):
             continue
-        if not data.get("id"):
-            continue
-        prefix = data.get("prefix", "")
-        expiration = data.get("expiration", {})
-        noncurrent = data.get("noncurrentExpiration", {})
-        rules[prefix] = {
-            "id": data["id"],
-            "expire_days": expiration.get("days", 0),
-            "expire_delete_marker": expiration.get("deleteMarker", False),
-            "noncurrent_expire_days": noncurrent.get("days", 0),
-        }
+        for rule in (doc.get("config") or {}).get("Rules") or []:
+            if not isinstance(rule, dict) or not rule.get("ID"):
+                continue
+            rule_filter = rule.get("Filter") or {}
+            prefix = (
+                rule_filter.get("Prefix")
+                or (rule_filter.get("And") or {}).get("Prefix")
+                or rule.get("Prefix")
+                or ""
+            )
+            expiration = rule.get("Expiration") or {}
+            noncurrent = rule.get("NoncurrentVersionExpiration") or {}
+            rules.setdefault(prefix, []).append({
+                "id": rule["ID"],
+                "expire_days": expiration.get("Days") or 0,
+                "expire_delete_marker": bool(expiration.get("ExpiredObjectDeleteMarker")),
+                "noncurrent_expire_days": noncurrent.get("NoncurrentDays") or 0,
+            })
     return rules
 
 
@@ -288,48 +300,59 @@ def run(items: list, console, **kwargs) -> dict:
         if lifecycle_rules:
             existing_rules = _get_existing_lifecycle_rules(target)
             rules_added = 0
-            rules_updated = 0
+            rules_removed = 0
             rules_unchanged = 0
 
+            desired_by_prefix = {}
             for rule in lifecycle_rules:
-                prefix = rule.get("prefix", "")
-                existing = existing_rules.get(prefix)
+                desired_by_prefix.setdefault(rule.get("prefix", ""), []).append(rule)
 
-                if existing and _rule_matches(existing, rule):
-                    rules_unchanged += 1
+            for prefix, desired in desired_by_prefix.items():
+                # Pair every configured rule with one identical existing rule; whatever
+                # is left over under this prefix is stale (other settings) or a copy.
+                remaining = list(existing_rules.get(prefix, []))
+                to_add = []
+                for rule in desired:
+                    match = next((r for r in remaining if _rule_matches(r, rule)), None)
+                    if match:
+                        remaining.remove(match)
+                        rules_unchanged += 1
+                    else:
+                        to_add.append(rule)
+
+                prefix_failed = False
+                for stale in remaining:
+                    rm_result = _mc(["ilm", "rule", "rm", "--id", stale["id"], target])
+                    if rm_result.returncode == 0:
+                        rules_removed += 1
+                    else:
+                        fail(console, f"remove lifecycle rule {stale['id']} prefix='{prefix}' on {name}: "
+                                      f"{rm_result.stderr}")
+                        failed += 1
+                        prefix_failed = True
+                if prefix_failed:
                     continue
 
-                if existing:
-                    # Settings differ -> remove old rule first
-                    rm_result = _mc(["ilm", "rule", "rm", target, "--id", existing["id"]])
-                    if rm_result.returncode != 0:
-                        fail(console, f"replace lifecycle rule prefix='{prefix}' on {name}: {rm_result.stderr}")
-                        failed += 1
-                        continue
-
-                cmd = _build_ilm_add_cmd(target, rule)
-                add_result = _mc(cmd)
-                if add_result.returncode == 0:
-                    if existing:
-                        rules_updated += 1
-                        console.print(f"    [green]  Lifecycle rule updated: prefix='{prefix}'[/]")
-                    else:
+                for rule in to_add:
+                    add_result = _mc(_build_ilm_add_cmd(target, rule))
+                    if add_result.returncode == 0:
                         rules_added += 1
+                        configured += 1
                         console.print(f"    [green]  Lifecycle rule added: prefix='{prefix}'[/]")
-                    configured += 1
-                else:
-                    fail(console, f"add lifecycle rule prefix='{prefix}' on {name}: {add_result.stderr}")
-                    failed += 1
+                    else:
+                        fail(console, f"add lifecycle rule prefix='{prefix}' on {name}: {add_result.stderr}")
+                        failed += 1
 
-            if rules_added or rules_updated:
+            if rules_added or rules_removed:
                 summary = []
                 if rules_added:
                     summary.append(f"{rules_added} added")
-                if rules_updated:
-                    summary.append(f"{rules_updated} updated")
+                if rules_removed:
+                    summary.append(f"{rules_removed} outdated or duplicate removed")
                 if rules_unchanged:
                     summary.append(f"{rules_unchanged} unchanged")
                 console.print(f"    [dim]  Lifecycle: {', '.join(summary)}[/]")
+                configured += 1
             elif rules_unchanged:
                 console.print(f"    [dim]  Lifecycle: {rules_unchanged} rule(s) already configured[/]")
 
