@@ -194,7 +194,7 @@ Lifecycle rules are matched by prefix for idempotency. On re-run, existing rules
 | `user`        | string | *(required)* | Parent user for the service account             |
 | `name`        | string | `sa-{user}`  | Display name (used as filename for credentials) |
 | `description` | string | `""`         | Description                                     |
-| `policy`      | string | -            | Named policy to scope the service account       |
+| `policy`      | string | -            | Named policy the account is restricted to; without it the account inherits the parent user's permissions. A policy that cannot be read fails the run |
 
 Credentials are generated dynamically by MinIO and written to `/data/credentials/<name>.json`:
 

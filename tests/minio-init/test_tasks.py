@@ -2,6 +2,7 @@
 
 import json
 import socket
+from pathlib import Path
 
 import pytest
 from conftest import load_task, output, random_secret
@@ -299,6 +300,42 @@ def test_service_account_credentials_are_written(mc, console, credentials_dir):
     assert result["failed"] == 0
     written = json.loads((credentials_dir / "worker.json").read_text())
     assert written == {"user": "app", "name": "Worker", "accessKey": access_key, "secretKey": secret_key}
+
+
+POLICY_DOC = {"Version": "2012-10-17", "Statement": [{"Effect": "Allow", "Action": ["s3:GetObject"],
+                                                     "Resource": ["arn:aws:s3:::docs/*"]}]}
+
+
+def _export_policy(args):
+    """What `mc admin policy info ... --policy-file PATH` does: write the raw document."""
+    path = args[args.index("--policy-file") + 1]
+    with open(path, "w") as f:
+        json.dump(POLICY_DOC, f)
+
+
+def test_service_account_is_scoped_to_its_policy(mc, console, credentials_dir):
+    seen = {}
+    mc.on("admin", "policy", "info", effect=_export_policy)
+    mc.on("admin", "user", "svcacct", "add",
+          stdout=json.dumps({"status": "success", "accessKey": random_secret(), "secretKey": random_secret()}),
+          effect=lambda args: seen.update(policy=json.loads(Path(args[args.index("--policy") + 1]).read_text())))
+
+    result = service_accounts.run([{"user": "app", "name": "worker", "policy": "pDocs"}], console, context={})
+
+    assert result["failed"] == 0
+    assert seen["policy"] == POLICY_DOC
+    exported = mc.called("admin", "policy", "info")[0]
+    assert exported[:5] == ["admin", "policy", "info", "minio", "pDocs"]
+    policy_path = exported[exported.index("--policy-file") + 1]
+    assert mc.called("admin", "user", "svcacct", "add")[0][-2:] == ["--policy", policy_path]
+    assert not Path(policy_path).exists()
+
+
+def test_service_account_with_empty_exported_policy_is_fatal(mc, console, credentials_dir):
+    result = service_accounts.run([{"user": "app", "name": "worker", "policy": "pDocs"}], console, context={})
+
+    assert result["failed"] == 1
+    assert not mc.called("admin", "user", "svcacct", "add")
 
 
 def test_service_account_without_parsable_credentials_is_fatal(mc, console, credentials_dir):
