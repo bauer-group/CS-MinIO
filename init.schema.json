@@ -1,0 +1,240 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://raw.githubusercontent.com/bauer-group/CS-MinIO/main/init.schema.json",
+  "title": "MinIO Init Configuration",
+  "description": "Declarative configuration for the minio-init container (ghcr.io/bauer-group/cs-minio/minio-init). Any string may contain ${VAR} placeholders that are resolved from the container environment. Keys starting with an underscore are comments and ignored. Reference: https://github.com/bauer-group/CS-MinIO/blob/main/src/minio-init/README.md",
+  "type": "object",
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "description": "URL of this schema, for editor validation."
+    },
+    "buckets": {
+      "type": "array",
+      "description": "Buckets to create and configure (task 01).",
+      "items": { "$ref": "#/definitions/bucket" }
+    },
+    "policies": {
+      "type": "array",
+      "description": "IAM policies to create or update (task 02).",
+      "items": { "$ref": "#/definitions/policy" }
+    },
+    "users": {
+      "type": "array",
+      "description": "Users to create, with group membership and direct policies (task 03).",
+      "items": { "$ref": "#/definitions/user" }
+    },
+    "groups": {
+      "type": "array",
+      "description": "Policies to attach to groups (task 04). A group exists once a user was added to it.",
+      "items": { "$ref": "#/definitions/group" }
+    },
+    "service_accounts": {
+      "type": "array",
+      "description": "Service accounts with server-generated credentials, written to /data/credentials/<name>.json (task 05).",
+      "items": { "$ref": "#/definitions/serviceAccount" }
+    },
+    "notifications": {
+      "type": "array",
+      "description": "Webhook notification targets and their bucket/event bindings (task 06).",
+      "items": { "$ref": "#/definitions/notification" }
+    }
+  },
+  "patternProperties": {
+    "^_": { "$ref": "#/definitions/comment" }
+  },
+  "additionalProperties": false,
+  "definitions": {
+    "comment": {
+      "description": "Comment, ignored by minio-init."
+    },
+    "stringList": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "bucket": {
+      "type": "object",
+      "required": ["name"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1, "description": "Bucket name." },
+        "region": { "type": "string", "description": "Bucket region; must match the server region when one is set." },
+        "versioning": { "type": "boolean", "default": false, "description": "Enable versioning (implied by object_lock)." },
+        "object_lock": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enable object-lock/WORM. Only possible when the bucket is created; on an existing bucket this is a warning."
+        },
+        "quota": {
+          "type": "object",
+          "required": ["size"],
+          "properties": {
+            "type": { "type": "string", "enum": ["hard"], "default": "hard" },
+            "size": { "type": "string", "minLength": 1, "examples": ["10GB", "500MiB"] }
+          },
+          "patternProperties": { "^_": { "$ref": "#/definitions/comment" } },
+          "additionalProperties": false
+        },
+        "retention": {
+          "type": "object",
+          "description": "Default retention; requires object_lock.",
+          "properties": {
+            "mode": { "type": "string", "enum": ["compliance", "governance", "COMPLIANCE", "GOVERNANCE"], "default": "compliance" },
+            "days": { "type": "integer", "minimum": 1 },
+            "years": { "type": "integer", "minimum": 1 }
+          },
+          "anyOf": [{ "required": ["days"] }, { "required": ["years"] }],
+          "patternProperties": { "^_": { "$ref": "#/definitions/comment" } },
+          "additionalProperties": false
+        },
+        "lifecycle_rules": {
+          "type": "array",
+          "description": "Expiration rules, matched by prefix.",
+          "items": { "$ref": "#/definitions/lifecycleRule" }
+        },
+        "policy": {
+          "type": "string",
+          "enum": ["private", "public", "public-readwrite"],
+          "default": "private",
+          "description": "Anonymous access: private (none), public (read-only download) or public-readwrite."
+        },
+        "cors": {
+          "type": "array",
+          "description": "S3-compatible per-bucket CORS rules. Validated, but not applied on MinIO (global MINIO_API_CORS_ALLOW_ORIGIN).",
+          "items": { "$ref": "#/definitions/corsRule" }
+        }
+      },
+      "patternProperties": { "^_": { "$ref": "#/definitions/comment" } },
+      "additionalProperties": false
+    },
+    "lifecycleRule": {
+      "type": "object",
+      "properties": {
+        "prefix": { "type": "string", "default": "", "description": "Object prefix filter; empty = all objects." },
+        "expire_days": { "type": "integer", "minimum": 1, "description": "Expire current versions after N days." },
+        "noncurrent_expire_days": { "type": "integer", "minimum": 1, "description": "Expire noncurrent versions after N days." },
+        "expire_delete_marker": { "type": "boolean", "default": false, "description": "Remove expired delete markers (cannot be combined with expire_days in one rule)." }
+      },
+      "anyOf": [
+        { "required": ["expire_days"] },
+        { "required": ["noncurrent_expire_days"] },
+        { "required": ["expire_delete_marker"] }
+      ],
+      "patternProperties": { "^_": { "$ref": "#/definitions/comment" } },
+      "additionalProperties": false
+    },
+    "corsRule": {
+      "type": "object",
+      "required": ["allowed_origins", "allowed_methods"],
+      "properties": {
+        "allowed_origins": { "type": "array", "minItems": 1, "items": { "type": "string" } },
+        "allowed_methods": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "enum": ["GET", "PUT", "POST", "DELETE", "HEAD"] }
+        },
+        "allowed_headers": { "$ref": "#/definitions/stringList" },
+        "expose_headers": { "$ref": "#/definitions/stringList" },
+        "max_age_seconds": { "type": "integer", "minimum": 0 }
+      },
+      "patternProperties": { "^_": { "$ref": "#/definitions/comment" } },
+      "additionalProperties": false
+    },
+    "policy": {
+      "type": "object",
+      "required": ["name", "statements"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "statements": {
+          "type": "array",
+          "minItems": 1,
+          "description": "IAM policy statements (the document's \"Statement\" list).",
+          "items": {
+            "type": "object",
+            "required": ["Effect"],
+            "properties": {
+              "Sid": { "type": "string" },
+              "Effect": { "type": "string", "enum": ["Allow", "Deny"] },
+              "Action": { "type": ["string", "array"], "items": { "type": "string" } },
+              "NotAction": { "type": ["string", "array"], "items": { "type": "string" } },
+              "Resource": { "type": ["string", "array"], "items": { "type": "string" } },
+              "NotResource": { "type": ["string", "array"], "items": { "type": "string" } },
+              "Condition": { "type": "object" }
+            }
+          }
+        }
+      },
+      "patternProperties": { "^_": { "$ref": "#/definitions/comment" } },
+      "additionalProperties": false
+    },
+    "user": {
+      "type": "object",
+      "required": ["access_key", "secret_key"],
+      "properties": {
+        "access_key": {
+          "type": "string",
+          "description": "User name. Empty (e.g. an unset ${VAR}) skips this optional user."
+        },
+        "secret_key": {
+          "type": "string",
+          "description": "Password, 8 to 40 characters; use ${VAR}. Empty skips this optional user."
+        },
+        "groups": { "$ref": "#/definitions/stringList" },
+        "policies": { "$ref": "#/definitions/stringList" }
+      },
+      "patternProperties": { "^_": { "$ref": "#/definitions/comment" } },
+      "additionalProperties": false
+    },
+    "group": {
+      "type": "object",
+      "required": ["name", "policies"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "policies": { "$ref": "#/definitions/stringList" }
+      },
+      "patternProperties": { "^_": { "$ref": "#/definitions/comment" } },
+      "additionalProperties": false
+    },
+    "serviceAccount": {
+      "type": "object",
+      "required": ["user"],
+      "properties": {
+        "user": { "type": "string", "description": "Parent user. Empty or a skipped user skips this account." },
+        "name": { "type": "string", "description": "Display name, also the credentials file name. Default: sa-<user>." },
+        "description": { "type": "string" },
+        "policy": { "type": "string", "description": "Named policy the account is restricted to." }
+      },
+      "patternProperties": { "^_": { "$ref": "#/definitions/comment" } },
+      "additionalProperties": false
+    },
+    "notification": {
+      "type": "object",
+      "required": ["id", "endpoint"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^[A-Za-z0-9_-]+$", "description": "Target id." },
+        "type": { "type": "string", "enum": ["webhook"], "default": "webhook" },
+        "endpoint": {
+          "type": "string",
+          "description": "Webhook URL reachable from MinIO. Empty skips the entry; an unreachable receiver is skipped until the next start."
+        },
+        "auth_token": { "type": "string", "description": "Shared secret sent as Authorization; use ${VAR}." },
+        "queue_dir": { "type": "string", "description": "Server-side store-and-forward directory on a MinIO volume." },
+        "queue_limit": { "type": "integer", "minimum": 1, "default": 100000 },
+        "buckets": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": ["*"],
+          "description": "[\"*\"] = all buckets at run time, or an explicit list."
+        },
+        "events": {
+          "type": "array",
+          "items": { "type": "string", "enum": ["put", "delete", "get", "replica", "ilm", "scanner"] },
+          "default": ["put", "delete"]
+        },
+        "prefix": { "type": "string", "default": "" },
+        "suffix": { "type": "string", "default": "" }
+      },
+      "patternProperties": { "^_": { "$ref": "#/definitions/comment" } },
+      "additionalProperties": false
+    }
+  }
+}

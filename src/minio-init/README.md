@@ -65,6 +65,16 @@ The summary line ends either in `Initialization complete (…)` or in `Initializ
 
 ## JSON Configuration Schema
 
+The formal JSON schema is [`init.schema.json`](../../init.schema.json) in the repository root. Reference it so editors validate the config (unknown keys, unsupported values such as a bucket `policy` of `download`, missing `secret_key`, ...):
+
+```json
+{
+  "$schema": "https://raw.githubusercontent.com/bauer-group/CS-MinIO/main/init.schema.json"
+}
+```
+
+In a Compose inline `configs:` block write `"$$schema"`, because Compose would otherwise read `$schema` as a variable. Keys that start with an underscore (`"_description"`, `"_comment"`) are comments at every level. minio-init itself does not validate against the schema; it ignores unknown keys.
+
 ```json
 {
   "buckets": [

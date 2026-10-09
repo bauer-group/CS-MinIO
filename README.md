@@ -193,7 +193,13 @@ All operations are idempotent. The init container runs on every start.
 }
 ```
 
-See [src/minio-init/README.md](src/minio-init/README.md) for the full JSON schema reference.
+See [src/minio-init/README.md](src/minio-init/README.md) for the full JSON schema reference. Editors validate a config against [`init.schema.json`](init.schema.json) when it starts with:
+
+```json
+"$schema": "https://raw.githubusercontent.com/bauer-group/CS-MinIO/main/init.schema.json"
+```
+
+In a Compose inline `configs:` block, write `"$$schema"` so Compose does not treat `$schema` as a variable.
 
 ## Optional: CDN Cache Purging (Worker)
 
@@ -296,6 +302,7 @@ Virtual-host-style bucket access (e.g., `bucket.s3.example.com`) is prepared but
 ├── config/
 │   ├── minio-init.json                # Init container configuration (user-facing)
 │   └── minio-init.example.json        # Full example with all resource types
+├── init.schema.json                   # JSON schema of the init config ("$schema" URL)
 ├── docs/
 │   └── aistor-migration.md            # MinIO AIStor (licensed successor) info
 ├── tests/

@@ -1,4 +1,5 @@
 {
+  "$schema": "https://raw.githubusercontent.com/bauer-group/CS-MinIO/main/init.schema.json",
   "buckets": [
     {
       "name": "documents",
