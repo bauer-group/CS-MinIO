@@ -346,6 +346,55 @@ def test_service_account_without_parsable_credentials_is_fatal(mc, console, cred
     assert result["failed"] == 1
 
 
+def _svcacct_list(mc, *access_keys):
+    """`mc admin user svcacct list --json`: one compact object per account."""
+    lines = [json.dumps({"status": "success", "accessKey": k}) for k in access_keys]
+    mc.on("admin", "user", "svcacct", "list", stdout="\n".join(lines))
+
+
+def _store_credentials(credentials_dir, access_key):
+    (credentials_dir / "worker.json").write_text(json.dumps(
+        {"user": "app", "name": "worker", "accessKey": access_key, "secretKey": random_secret()}))
+
+
+def test_service_account_with_valid_stored_credentials_is_kept(mc, console, credentials_dir):
+    access_key = random_secret()
+    _store_credentials(credentials_dir, access_key)
+    before = (credentials_dir / "worker.json").read_text()
+    _svcacct_list(mc, random_secret(), access_key)
+
+    result = service_accounts.run([{"user": "app", "name": "worker"}], console, context={})
+
+    assert result["failed"] == 0 and not result["changed"]
+    assert not mc.called("admin", "user", "svcacct", "add")
+    assert (credentials_dir / "worker.json").read_text() == before
+
+
+@pytest.mark.parametrize("stored", [True, False])
+def test_service_account_is_recreated_when_stored_credentials_are_gone(mc, console, credentials_dir, stored):
+    if stored:
+        _store_credentials(credentials_dir, random_secret())  # account was deleted in MinIO
+    _svcacct_list(mc, random_secret())
+    new_key = random_secret()
+    mc.on("admin", "user", "svcacct", "add",
+          stdout=json.dumps({"status": "success", "accessKey": new_key, "secretKey": random_secret()}))
+
+    result = service_accounts.run([{"user": "app", "name": "worker"}], console, context={})
+
+    assert result["failed"] == 0 and result["changed"]
+    assert json.loads((credentials_dir / "worker.json").read_text())["accessKey"] == new_key
+
+
+def test_service_account_listing_failure_is_fatal(mc, console, credentials_dir):
+    mc.fail("admin", "user", "svcacct", "list", message="Unable to list service accounts",
+            cause="The specified user does not exist.")
+
+    result = service_accounts.run([{"user": "ghost", "name": "worker"}], console, context={})
+
+    assert result["failed"] == 1
+    assert not mc.called("admin", "user", "svcacct", "add")
+
+
 # --- notifications ----------------------------------------------------------
 
 ENTRY = {

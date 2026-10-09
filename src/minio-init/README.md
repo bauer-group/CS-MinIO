@@ -207,6 +207,8 @@ Credentials are generated dynamically by MinIO and written to `/data/credentials
 }
 ```
 
+**Re-runs:** the account is kept as long as `<name>.json` still holds an access key that MinIO lists for the parent user - nothing is created and the file stays as it is. If the file is missing or its account was deleted, a new account is created and the file rewritten, so keep `/data/credentials` on a persistent volume. Earlier versions created a new account (and rewrote the file) on every start; those older accounts stay valid until they are removed - list them with `mc admin user svcacct ls <alias> <user>` and remove every access key except the one in `<name>.json` with `mc admin user svcacct rm <alias> <access-key>`.
+
 ### Bucket Notifications
 
 Forward object events (create/delete) to a webhook target - used by the optional
