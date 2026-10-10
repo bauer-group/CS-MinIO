@@ -1,22 +1,25 @@
 # =============================================================================
 # Docker Maintenance - Auto-merge Dependabot PRs
 # =============================================================================
-# Automatically merges Dependabot PRs for Docker base image updates.
-# After merge, the docker-release.yml workflow is triggered which:
-# 1. Creates a semantic release
-# 2. Builds and pushes the new Docker images (minio + minio-init)
+# Hands every Dependabot PR to the reusable docker-maintenance-dependabot
+# workflow. It merges a PR only after the pull_request run of
+# docker-release.yml (compose validation, minio-init unit and integration
+# tests, all image builds) has passed on the PR head commit.
 #
-# Flow:
-# ┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
-# │  Dependabot     │────>│  PR Created     │────>│  Docker Build   │
-# │  Finds Update   │     │  (base image)   │     │  Validates      │
-# └─────────────────┘     └─────────────────┘     └────────┬────────┘
-#                                                          │
-#                                                          v
-# ┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
-# │  New Release    │<────│  Auto-Merged    │<────│  All Checks     │
-# │  + Docker Push  │     │  to main        │     │  Pass           │
-# └─────────────────┘     └─────────────────┘     └─────────────────┘
+# Trigger scope: no paths filter on purpose. Every Dependabot PR, whatever
+# its ecosystem, reaches the module and gets an explicit decision and
+# annotation instead of silently staying open:
+# - docker (src/minio, src/minio-init): changes src/**, which starts
+#   docker-release.yml - merged once that run passed (patch updates only)
+# - github-actions, or any other change under .github/: left open by the
+#   module's own guard - CI changes are merged by hand
+# - any ecosystem whose files docker-release.yml does not watch: left open
+#   as "not tested"
+#
+# The merge is made with the GITHUB_TOKEN and starts no workflow itself, and
+# Dependabot's chore(...) prefixes cut no release: the updated images ship
+# with the next releasing push to main (feat, fix, perf, refactor, revert)
+# or a forced release (daily base image check, manual run).
 # =============================================================================
 
 name: "\U0001F527 Docker Maintenance"
@@ -24,9 +27,6 @@ name: "\U0001F527 Docker Maintenance"
 on:
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
-    paths:
-      - 'src/minio/Dockerfile'
-      - 'src/minio-init/Dockerfile'
 
 permissions:
   contents: write
