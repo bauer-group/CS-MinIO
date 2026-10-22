@@ -4,6 +4,16 @@ All notable changes to this project are documented here. This file is maintained
 automatically by [semantic-release](https://github.com/semantic-release/semantic-release)
 on every release to `main`.
 
+## [0.9.15](https://github.com/bauer-group/CS-MinIO/compare/v0.9.14...v0.9.15) (2026-10-22)
+
+### 🔧 Maintenance
+
+* **deps:** update base image golang-alpine, node-alpine, python-alpine, alpine [skip ci] ([a0f5c4f](https://github.com/bauer-group/CS-MinIO/commit/a0f5c4f2f39440433063216f16d2db06070f79e7))
+* update Dockerfile version to 0.9.14 ([9defe48](https://github.com/bauer-group/CS-MinIO/commit/9defe485838a63d603a14f47a1772a6b24619d1e))
+* update Dockerfile version to 0.9.14 ([af01686](https://github.com/bauer-group/CS-MinIO/commit/af01686961183b122d5b324db2783fb30c8785e0))
+* update Dockerfile version to 0.9.14 ([2c43489](https://github.com/bauer-group/CS-MinIO/commit/2c434893e6df10930634a63339a50cb759be52f6))
+* update Dockerfile version to 0.9.14 ([0dae1a9](https://github.com/bauer-group/CS-MinIO/commit/0dae1a92501453e5ee7c048e85f664b917cf8941))
+
 ## [0.9.14](https://github.com/bauer-group/CS-MinIO/compare/v0.9.13...v0.9.14) (2026-10-21)
 
 ### 🔧 Maintenance
