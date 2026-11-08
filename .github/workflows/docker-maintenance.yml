@@ -10,7 +10,8 @@
 # its ecosystem, reaches the module and gets an explicit decision and
 # annotation instead of silently staying open:
 # - docker (src/minio, src/minio-init): changes src/**, which starts
-#   docker-release.yml - merged once that run passed (patch updates only)
+#   docker-release.yml - patch and minor updates are merged once that run
+#   passed; majors stay manual (merge-update-types default)
 # - github-actions, or any other change under .github/: left open by the
 #   module's own guard - CI changes are merged by hand
 # - any ecosystem whose files docker-release.yml does not watch: left open
