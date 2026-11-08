@@ -1,4 +1,4 @@
-name: "\U0001F504 Check Base Image Updates"
+name: "🔄 Check Base Image Updates"
 
 on:
   schedule:

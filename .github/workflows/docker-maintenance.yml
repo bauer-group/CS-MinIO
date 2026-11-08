@@ -22,7 +22,7 @@
 # or a forced release (daily base image check, manual run).
 # =============================================================================
 
-name: "\U0001F527 Docker Maintenance"
+name: "🔧 Docker Maintenance"
 
 on:
   pull_request:

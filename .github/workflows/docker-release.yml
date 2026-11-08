@@ -1,4 +1,4 @@
-name: "\U0001F680 Release & Docker Build"
+name: "🚀 Release & Docker Build"
 
 on:
   push:
@@ -41,7 +41,7 @@ jobs:
   # ============================================
 
   validate-compose:
-    name: "\U0001F50D Validate Docker Compose"
+    name: "🔍 Validate Docker Compose"
     uses: bauer-group/automation-templates/.github/workflows/modules-validate-compose.yml@main
     with:
       compose-files: '["docker-compose-single.yml", "docker-compose-single-traefik.yml", "docker-compose-development.yml"]'
@@ -94,7 +94,7 @@ jobs:
   # ============================================
 
   release:
-    name: "\U0001F4E6 Create Semantic Release"
+    name: "📦 Create Semantic Release"
     needs: [validate-compose, test-init, test-init-integration]
     if: |
       (github.event_name == 'push' || github.event_name == 'workflow_dispatch') &&
@@ -113,7 +113,7 @@ jobs:
   # ============================================
 
   docker-build-release:
-    name: "\U0001F433 Build & Push MinIO Image"
+    name: "🐳 Build & Push MinIO Image"
     needs: release
     if: needs.release.outputs.release-created == 'true'
     uses: bauer-group/automation-templates/.github/workflows/docker-build.yml@main
@@ -143,7 +143,7 @@ jobs:
     secrets: inherit
 
   docker-build-pr:
-    name: "\U0001F528 Validate MinIO Build (PR)"
+    name: "🔨 Validate MinIO Build (PR)"
     needs: [validate-compose]
     if: |
       github.event_name == 'pull_request' &&
@@ -169,7 +169,7 @@ jobs:
   # ============================================
 
   docker-build-init-release:
-    name: "\U0001F433 Build & Push Init Image"
+    name: "🐳 Build & Push Init Image"
     needs: release
     if: needs.release.outputs.release-created == 'true'
     uses: bauer-group/automation-templates/.github/workflows/docker-build.yml@main
@@ -199,7 +199,7 @@ jobs:
     secrets: inherit
 
   docker-build-init-pr:
-    name: "\U0001F528 Validate Init Build (PR)"
+    name: "🔨 Validate Init Build (PR)"
     needs: [validate-compose]
     if: |
       github.event_name == 'pull_request' &&
@@ -225,7 +225,7 @@ jobs:
   # ============================================
 
   docker-build-console-release:
-    name: "\U0001F433 Build & Push Console Image"
+    name: "🐳 Build & Push Console Image"
     needs: release
     if: needs.release.outputs.release-created == 'true'
     uses: bauer-group/automation-templates/.github/workflows/docker-build.yml@main
@@ -255,7 +255,7 @@ jobs:
     secrets: inherit
 
   docker-build-console-pr:
-    name: "\U0001F528 Validate Console Build (PR)"
+    name: "🔨 Validate Console Build (PR)"
     needs: [validate-compose]
     if: |
       github.event_name == 'pull_request' &&
@@ -281,7 +281,7 @@ jobs:
   # ============================================
 
   docker-build-worker-release:
-    name: "\U0001F433 Build & Push Worker Image"
+    name: "🐳 Build & Push Worker Image"
     needs: release
     if: needs.release.outputs.release-created == 'true'
     uses: bauer-group/automation-templates/.github/workflows/docker-build.yml@main
@@ -311,7 +311,7 @@ jobs:
     secrets: inherit
 
   docker-build-worker-pr:
-    name: "\U0001F528 Validate Worker Build (PR)"
+    name: "🔨 Validate Worker Build (PR)"
     needs: [validate-compose]
     if: |
       github.event_name == 'pull_request' &&
