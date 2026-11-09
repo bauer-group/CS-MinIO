@@ -3,6 +3,11 @@
 # =============================================================================
 # Monitors Docker base images and GitHub Actions for updates.
 # Combined with docker-maintenance.yml workflow for auto-merge and release.
+#
+# The commit prefix decides whether a merged update is released: fix(...)
+# cuts a PATCH release and rebuilds the images, chore(...) releases nothing.
+# Everything that ends up in the shipped images uses fix(...); GitHub
+# Actions updates stay chore(ci) (no release, never auto-merged).
 # =============================================================================
 
 version: 2
@@ -35,7 +40,7 @@ updates:
       - "docker"
       - "dependabot"
     commit-message:
-      prefix: "chore(docker)"
+      prefix: "fix(docker)"
 
   # Docker base image updates - MinIO init
   - package-ecosystem: "docker"
@@ -50,4 +55,4 @@ updates:
       - "docker"
       - "dependabot"
     commit-message:
-      prefix: "chore(docker)"
+      prefix: "fix(docker)"

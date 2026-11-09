@@ -17,10 +17,13 @@
 # - any ecosystem whose files docker-release.yml does not watch: left open
 #   as "not tested"
 #
-# The merge is made with the GITHUB_TOKEN and starts no workflow itself, and
-# Dependabot's chore(...) prefixes cut no release: the updated images ship
-# with the next releasing push to main (feat, fix, perf, refactor, revert)
-# or a forced release (daily base image check, manual run).
+# A merge made with the GITHUB_TOKEN starts no push workflow, so after the
+# merge this workflow dispatches docker-release.yml on main and waits for
+# it (release-workflow). That run tests and builds the merged commit again
+# and only then:
+# 1. Creates a semantic release (fix(docker) -> PATCH)
+# 2. Builds and pushes the new Docker images
+# A release run that does not succeed turns this job red.
 # =============================================================================
 
 name: "🔧 Docker Maintenance"
@@ -30,8 +33,11 @@ on:
     types: [opened, synchronize, reopened, ready_for_review]
 
 permissions:
-  contents: write
-  pull-requests: write
+  contents: write       # merge
+  pull-requests: write  # approve, read the PR
+  checks: read          # check runs and suites of the PR head commit
+  statuses: read        # commit statuses of the PR head commit
+  actions: write        # dispatch the release; read workflow runs
 
 jobs:
   maintenance:
@@ -43,4 +49,8 @@ jobs:
       # Merge only after this PR CI has passed on the PR head commit - it
       # tests the init container and builds the images.
       required-workflows: '.github/workflows/docker-release.yml'
+      # After a merge - and only then - dispatch the release on main and
+      # wait for it: it rebuilds the merged commit before it releases it,
+      # and a failed release run fails this job.
+      release-workflow: '.github/workflows/docker-release.yml'
     secrets: inherit

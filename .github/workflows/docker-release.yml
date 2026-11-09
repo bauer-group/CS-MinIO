@@ -90,20 +90,42 @@ jobs:
         run: tests/minio-init/integration/run.sh
 
   # ============================================
-  # Release Job (only on main branch push)
+  # Release Job (push to main or dispatch)
   # ============================================
+  # Needs the tests and the four image builds of this run (the *-validate
+  # jobs below run on every event and push nothing): a failed test or build
+  # skips the release and every image push. Only a run that created a
+  # release publishes - never a PR, a branch dispatch or a run that
+  # released nothing.
 
   release:
     name: "📦 Create Semantic Release"
-    needs: [validate-compose, test-init, test-init-integration]
+    needs:
+      - validate-compose
+      - test-init
+      - test-init-integration
+      - docker-build-validate
+      - docker-build-init-validate
+      - docker-build-console-validate
+      - docker-build-worker-validate
     if: |
       (github.event_name == 'push' || github.event_name == 'workflow_dispatch') &&
       needs.validate-compose.result == 'success' &&
       needs.test-init.result == 'success' &&
-      needs.test-init-integration.result == 'success'
+      needs.test-init-integration.result == 'success' &&
+      needs.docker-build-validate.result == 'success' &&
+      needs.docker-build-init-validate.result == 'success' &&
+      needs.docker-build-console-validate.result == 'success' &&
+      needs.docker-build-worker-validate.result == 'success'
     uses: bauer-group/automation-templates/.github/workflows/modules-semantic-release.yml@main
     with:
       target-branch: 'main'
+      # Release the commit this run validated and built - the image jobs
+      # below build it too. Unpinned, the release would take the tip of
+      # main: a push that landed meanwhile would be tagged untested and be
+      # missing from the images. Pinned, nothing is released once main has
+      # moved on, and the run for the newer main releases both.
+      ref: ${{ github.sha }}
       dry-run: false
       force-release: ${{ inputs.force-release || false }}
     secrets: inherit
@@ -142,12 +164,13 @@ jobs:
       sync-dockerhub-readme: true
     secrets: inherit
 
-  docker-build-pr:
-    name: "🔨 Validate MinIO Build (PR)"
+  # Every event (PR, push, dispatch): builds the image from this commit
+  # without pushing - the PR CI docker-maintenance.yml waits for, and on a
+  # push or dispatch a gate of the release.
+  docker-build-validate:
+    name: "🔨 Validate MinIO Build"
     needs: [validate-compose]
-    if: |
-      github.event_name == 'pull_request' &&
-      needs.validate-compose.result == 'success'
+    if: needs.validate-compose.result == 'success'
     uses: bauer-group/automation-templates/.github/workflows/docker-build.yml@main
     with:
       publish-to: 'ghcr'
@@ -198,12 +221,13 @@ jobs:
       sync-dockerhub-readme: true
     secrets: inherit
 
-  docker-build-init-pr:
-    name: "🔨 Validate Init Build (PR)"
+  # Every event (PR, push, dispatch): builds the image from this commit
+  # without pushing - the PR CI docker-maintenance.yml waits for, and on a
+  # push or dispatch a gate of the release.
+  docker-build-init-validate:
+    name: "🔨 Validate Init Build"
     needs: [validate-compose]
-    if: |
-      github.event_name == 'pull_request' &&
-      needs.validate-compose.result == 'success'
+    if: needs.validate-compose.result == 'success'
     uses: bauer-group/automation-templates/.github/workflows/docker-build.yml@main
     with:
       publish-to: 'ghcr'
@@ -254,12 +278,13 @@ jobs:
       sync-dockerhub-readme: true
     secrets: inherit
 
-  docker-build-console-pr:
-    name: "🔨 Validate Console Build (PR)"
+  # Every event (PR, push, dispatch): builds the image from this commit
+  # without pushing - the PR CI docker-maintenance.yml waits for, and on a
+  # push or dispatch a gate of the release.
+  docker-build-console-validate:
+    name: "🔨 Validate Console Build"
     needs: [validate-compose]
-    if: |
-      github.event_name == 'pull_request' &&
-      needs.validate-compose.result == 'success'
+    if: needs.validate-compose.result == 'success'
     uses: bauer-group/automation-templates/.github/workflows/docker-build.yml@main
     with:
       publish-to: 'ghcr'
@@ -310,12 +335,13 @@ jobs:
       sync-dockerhub-readme: true
     secrets: inherit
 
-  docker-build-worker-pr:
-    name: "🔨 Validate Worker Build (PR)"
+  # Every event (PR, push, dispatch): builds the image from this commit
+  # without pushing - the PR CI docker-maintenance.yml waits for, and on a
+  # push or dispatch a gate of the release.
+  docker-build-worker-validate:
+    name: "🔨 Validate Worker Build"
     needs: [validate-compose]
-    if: |
-      github.event_name == 'pull_request' &&
-      needs.validate-compose.result == 'success'
+    if: needs.validate-compose.result == 'success'
     uses: bauer-group/automation-templates/.github/workflows/docker-build.yml@main
     with:
       publish-to: 'ghcr'
