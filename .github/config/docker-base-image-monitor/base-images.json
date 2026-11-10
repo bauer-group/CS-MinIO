@@ -20,14 +20,28 @@
       "image": "python",
       "tag": "3.14-alpine",
       "variable": "PYTHON_ALPINE_DIGEST",
-      "description": "Python Alpine runtime for minio-init container"
+      "description": "Python Alpine runtime for the minio-worker container (src/minio-worker)"
+    },
+    {
+      "name": "python-alpine-init",
+      "image": "python",
+      "tag": "3.15-alpine",
+      "variable": "PYTHON_ALPINE_INIT_DIGEST",
+      "description": "Python Alpine runtime for the minio-init container (src/minio-init)"
     },
     {
       "name": "alpine",
       "image": "alpine",
       "tag": "3.23",
       "variable": "ALPINE_DIGEST",
-      "description": "Alpine runtime for MinIO server and console images"
+      "description": "Alpine runtime for the MinIO console image (src/minio-console)"
+    },
+    {
+      "name": "alpine-server",
+      "image": "alpine",
+      "tag": "3.24",
+      "variable": "ALPINE_SERVER_DIGEST",
+      "description": "Alpine runtime for the MinIO server image (src/minio)"
     }
   ],
   "settings": {
