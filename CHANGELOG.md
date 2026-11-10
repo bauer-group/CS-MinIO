@@ -4,6 +4,23 @@ All notable changes to this project are documented here. This file is maintained
 automatically by [semantic-release](https://github.com/semantic-release/semantic-release)
 on every release to `main`.
 
+## [0.9.18](https://github.com/bauer-group/CS-MinIO/compare/v0.9.17...v0.9.18) (2026-11-10)
+
+### 🐛 Bug Fixes
+
+* **docker:** bump python in /src/minio-init ([#5](https://github.com/bauer-group/CS-MinIO/issues/5)) ([d1cd6d5](https://github.com/bauer-group/CS-MinIO/commit/d1cd6d511322ab87c1ce00f39ca6391f41ef586b))
+
+### 💄 UI/UX Improvements
+
+* **ci:** replaced emoji escape sequences with real characters ([ff7b3f4](https://github.com/bauer-group/CS-MinIO/commit/ff7b3f4f8ac8ca35e05f76c4f7b03d0db7a9d0d9))
+
+### 🔧 Maintenance
+
+* update Dockerfile version to 0.9.17 ([98d4c62](https://github.com/bauer-group/CS-MinIO/commit/98d4c624483bcd3bc3a860c915f49cf10f8972a3))
+* update Dockerfile version to 0.9.17 ([61219ef](https://github.com/bauer-group/CS-MinIO/commit/61219ef824dc6496814813fe1e36caf98ac75be6))
+* update Dockerfile version to 0.9.17 ([7f6814f](https://github.com/bauer-group/CS-MinIO/commit/7f6814f00abc5e8c8a184ecb761b752a8bfdbc71))
+* update Dockerfile version to 0.9.17 ([3240a9d](https://github.com/bauer-group/CS-MinIO/commit/3240a9d4640c9e8742ca95d220b4117b081418ad))
+
 ## [0.9.17](https://github.com/bauer-group/CS-MinIO/compare/v0.9.16...v0.9.17) (2026-11-06)
 
 ### 🔧 Maintenance
