@@ -4,42 +4,56 @@
     {
       "name": "golang-alpine",
       "image": "golang",
-      "tag": "1.26-alpine",
+      "dockerfile": "src/minio/Dockerfile",
       "variable": "GOLANG_ALPINE_DIGEST",
-      "description": "Go compiler for MinIO server, mc client, and console builds"
+      "description": "Go compiler for the MinIO server build - tag from the FROM line of src/minio/Dockerfile."
+    },
+    {
+      "name": "golang-alpine-init",
+      "image": "golang",
+      "dockerfile": "src/minio-init/Dockerfile",
+      "variable": "GOLANG_ALPINE_INIT_DIGEST",
+      "description": "Go compiler for the mc client build of minio-init - tag from the FROM line of src/minio-init/Dockerfile."
+    },
+    {
+      "name": "golang-alpine-console",
+      "image": "golang",
+      "dockerfile": "src/minio-console/Dockerfile",
+      "variable": "GOLANG_ALPINE_CONSOLE_DIGEST",
+      "description": "Go compiler for the console backend build - tag from the FROM line of src/minio-console/Dockerfile."
     },
     {
       "name": "node-alpine",
       "image": "node",
-      "tag": "22-alpine",
+      "dockerfile": "src/minio-console/Dockerfile",
       "variable": "NODE_ALPINE_DIGEST",
       "description": "Node.js for MinIO console frontend build"
     },
     {
       "name": "python-alpine",
       "image": "python",
-      "tag": "3.14-alpine",
+      "dockerfile": "src/minio-worker/Dockerfile",
       "variable": "PYTHON_ALPINE_DIGEST",
       "description": "Python Alpine runtime for the minio-worker container (src/minio-worker)"
     },
     {
       "name": "python-alpine-init",
       "image": "python",
-      "tag": "3.15-alpine",
+      "dockerfile": "src/minio-init/Dockerfile",
       "variable": "PYTHON_ALPINE_INIT_DIGEST",
       "description": "Python Alpine runtime for the minio-init container (src/minio-init)"
     },
     {
       "name": "alpine",
       "image": "alpine",
-      "tag": "3.23",
+      "dockerfile": "src/minio-console/Dockerfile",
       "variable": "ALPINE_DIGEST",
       "description": "Alpine runtime for the MinIO console image (src/minio-console)"
     },
     {
       "name": "alpine-server",
       "image": "alpine",
-      "tag": "3.24",
+      "dockerfile": "src/minio/Dockerfile",
       "variable": "ALPINE_SERVER_DIGEST",
       "description": "Alpine runtime for the MinIO server image (src/minio)"
     }
